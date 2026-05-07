@@ -1,0 +1,1156 @@
+--- FILE: ./README.md ---
+# qqar-iomt-paper
+
+--- FILE: ./experiments/__init__.py ---
+
+--- FILE: ./experiments/main.py ---
+from network import NetworkEnv
+
+def main():
+    # 1. Initialize and build the physical environment (200 nodes, 50m range)
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+    
+    print("\n--- Starting Phase 1: Network Discovery (Hello Packets) ---")
+    current_time = 1.0 # Mocking a time slot
+    
+    # Every node broadcasts its initial Hello packet to the network
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(current_time)
+        
+    print("Network discovery complete. All routing tables updated.\n")
+    
+    # 2. Verify the results for a random node (e.g., Node 0)
+    target_node = env.nodes[0]
+    one_hop_count = 0
+    two_hop_count = 0
+    
+    print(f"--- Routing Table for Node {target_node.node_id} ---")
+    for neighbor_id, data in target_node.neighbor_list.items():
+        if data['hops'] == 1:
+            one_hop_count += 1
+            print(f"Node {neighbor_id} is a 1-hop neighbor. (Energy: {data['energy']}J)")
+        elif data['hops'] == 2:
+            two_hop_count += 1
+            print(f"Node {neighbor_id} is a 2-hop neighbor. (Energy: {data['energy']}J)")
+            
+    print(f"\nSummary for Node {target_node.node_id}:")
+    print(f"Total 1-hop neighbors: {one_hop_count}")
+    print(f"Total 2-hop neighbors: {two_hop_count}")
+
+if __name__ == "__main__":
+    main()
+
+--- FILE: ./experiments/menu_routing.py ---
+import random  # Added missing import
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+
+def setup_and_train():
+    print("\n--- 1. Network Initialization ---")
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+    
+    # Notice: The artificial pinning of Node 0 and Node 199 has been removed!
+
+    print("\n--- 2. Neighbor Discovery (Hello Packets) ---")
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(1.0)
+    print("Discovery complete.")
+
+    print("\n--- 3. Reinforcement Learning Training ---")
+
+    sinks = random.sample(range(200), 10) # Randomly assign 10 nodes to act as sinks
+    print(f"Designated Sink Nodes: {sinks}")
+    
+    agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=5000)
+    agent.train(sinks)
+    
+    # Return the sinks array so the menu can use it for distance calculations
+    return env, agent, sinks
+
+def display_q_table(env, target_node_id, sinks):
+    if target_node_id not in env.nodes:
+        print("Error: Node ID does not exist.")
+        return
+        
+    node = env.nodes[target_node_id]
+    
+    if target_node_id in sinks:
+        print(f"\nNode {target_node_id} is a Sink Node. It does not route data further.")
+        return
+    
+    if not hasattr(node, 'q_table') or not node.q_table:
+        print(f"\nNode {target_node_id} has an empty Q-Table. (It may be isolated).")
+        return
+        
+    print(f"\n==========================================")
+    print(f" ROUTING TABLE FOR NODE {target_node_id}")
+    print(f"==========================================")
+    
+    # Calculate distance to the *closest* sink for context
+    min_dist = min([env.get_distance(target_node_id, s) for s in sinks])
+    print(f"Distance to closest Sink: {min_dist:.2f}m")
+    
+    print(f"{'Next Hop ID':<15} | {'Q-Value':<10}")
+    print("-" * 30)
+    
+    # Sort table so the best route is at the top
+    sorted_q_table = sorted(node.q_table.items(), key=lambda item: item[1], reverse=True)
+    
+    for next_hop, q_val in sorted_q_table:
+        marker = " <--- Best Route" if next_hop == sorted_q_table[0][0] else ""
+        print(f"{next_hop:<15} | {q_val:<10.2f}{marker}")
+    print("==========================================\n")
+
+def menu():
+    env, agent, sinks = setup_and_train()
+    
+    while True:
+        print("Routing Table Explorer")
+        print("----------------------")
+        print("1. View Node 0 Table (Example Node)")
+        print("2. View Specific Node Table")
+        print("3. Exit")
+        
+        choice = input("Enter choice (1-3): ")
+        
+        if choice == '1':
+            display_q_table(env, 0, sinks)
+        elif choice == '2':
+            try:
+                node_id = int(input("Enter Node ID (0-199): "))
+                display_q_table(env, node_id, sinks)
+            except ValueError:
+                print("Please enter a valid integer.")
+        elif choice == '3':
+            print("Exiting explorer.")
+            break
+        else:
+            print("Invalid choice.")
+
+if __name__ == "__main__":
+    menu()
+
+--- FILE: ./experiments/simulation_engine.py ---
+import random
+
+class SimulationEngine:
+    def __init__(self, env, agent, sinks, wban_nodes, data_rate, max_time=10.0):
+        self.env = env
+        self.agent = agent
+        self.sinks = sinks
+        self.wban_nodes = wban_nodes
+        self.data_rate = data_rate
+        self.max_time = max_time
+        self.current_time = 0.0
+        self.time_step = 0.01
+        
+        # RESET TRACKERS to prevent KeyErrors and stale data
+        for node in self.env.nodes.values():
+            node.scheduler = node.__init__.__.__class__().scheduler # Refresh scheduler
+            node.pkt_in = 0
+            node.pkt_out = 0
+            node.total_tx = 0
+            node.success_tx = 0
+            node.link_reliability = 1.0
+            node.avg_traffic_load = 0.0
+
+        self.successful_packets = 0
+        self.generated_packets = 0
+        self.total_delay = 0.0
+        self.total_hops = 0
+        self.energy_consumed = 0.0
+        self.active_packets = {}
+
+    def generate_traffic(self):
+        from algorithms.node import DataPacket
+        prob = self.data_rate * self.time_step
+        if random.random() < prob:
+            self.generated_packets += 1
+            src = random.choice(self.wban_nodes)
+            snk = random.choice(self.sinks)
+            
+            rv = random.random()
+            if rv < 0.05: tag, dl = 'High+', 1.0
+            elif rv < 0.15: tag, dl = 'High', 2.0
+            elif rv < 0.40: tag, dl = 'Med', 5.0
+            else: tag, dl = 'Low', 10.0
+                
+            pkt = DataPacket(self.generated_packets, src, snk, tag, self.current_time, dl)
+            self.active_packets[pkt.packet_id] = {'creation': self.current_time, 'hops': 0}
+            self.env.nodes[src].scheduler.enqueue_packet(pkt)
+
+    def run(self):
+        while self.current_time < self.max_time:
+            self.generate_traffic()
+            for node_id, node in self.env.nodes.items():
+                if node_id in self.sinks: continue
+                node.scheduler.manage_timeouts(self.current_time, self.time_step)
+                pkt = node.scheduler.get_next_packet_for_transmission()
+                if pkt:
+                    if self.current_time >= pkt.absolute_deadline: continue
+                    
+                    cur_dist = min([self.env.get_distance(node_id, s) for s in self.sinks])
+                    candidates = [n for n in node.neighbor_list.keys() if cur_dist > min([self.env.get_distance(n, s) for s in self.sinks])]
+                    
+                    if not candidates: continue
+                    
+                    nxt = self.agent.select_best_route(node_id, candidates, self.sinks)
+                    self.active_packets[pkt.packet_id]['hops'] += 1
+                    
+                    # Energy & Dynamic Stats
+                    node.energy -= 1.055 
+                    node.record_transmission(success=True)
+                    self.env.nodes[nxt].pkt_in += 1
+                    
+                    if nxt in self.sinks:
+                        self.successful_packets += 1
+                        self.total_hops += self.active_packets[pkt.packet_id]['hops']
+                        self.total_delay += (self.current_time - pkt.creation_time) * 1000
+                    else:
+                        self.env.nodes[nxt].scheduler.enqueue_packet(pkt)
+            self.current_time += self.time_step
+        return self._metrics()
+
+    def _metrics(self):
+        pdr = (self.successful_packets / max(1, self.generated_packets)) * 100
+        return pdr, self.total_delay/max(1,self.successful_packets), self.total_hops/max(1,self.successful_packets), self.energy_consumed
+
+--- FILE: ./experiments/verify_priority.py ---
+from algorithms.node import Node, DataPacket
+
+def test_priority_scheduler():
+    print("--- Testing Algorithm 2: Priority Scheduling ---\n")
+    
+    # 1. Initialize a single node
+    node = Node(node_id=0)
+    current_time = 0.0
+    
+    # 2. Create 4 packets (Low, Med, High, High+)
+    # We enqueue them backwards (Lowest priority first) to see if the node reorders them.
+    # We give the 'Med' packet a very short deadline to force a timeout promotion.
+    p1 = DataPacket(packet_id=101, source_id=0, sink_id=199, priority_tag='Low', creation_time=0.0, deadline_duration=5.0)
+    p2 = DataPacket(packet_id=102, source_id=0, sink_id=199, priority_tag='Med', creation_time=0.0, deadline_duration=0.1) # Dying packet!
+    p3 = DataPacket(packet_id=103, source_id=0, sink_id=199, priority_tag='High', creation_time=0.0, deadline_duration=2.0)
+    p4 = DataPacket(packet_id=104, source_id=0, sink_id=199, priority_tag='High+', creation_time=0.0, deadline_duration=1.0)
+    
+    print("Injecting packets into Node 0's buffer...")
+    node.scheduler.enqueue_packet(p1)
+    node.scheduler.enqueue_packet(p2)
+    node.scheduler.enqueue_packet(p3)
+    node.scheduler.enqueue_packet(p4)
+    
+    print(f"Queues loaded. Total packets: 4")
+    
+    # 3. Simulate a time tick where the 'Med' packet is about to expire
+    current_time = 0.05
+    estimated_tx_time = 0.1
+    print(f"\nTime advances to {current_time}s. Running timeout manager...")
+    
+    # Algorithm 2 timeout management
+    node.scheduler.manage_timeouts(current_time, estimated_tx_time)
+    
+    # 4. Pop the packets out of the node to transmit
+    print("\nExtracting packets for transmission (Algorithm 3 flow):")
+    for _ in range(4):
+        pkt = node.scheduler.get_next_packet_for_transmission()
+        if pkt:
+            print(f"Transmitting Packet {pkt.packet_id} | Final Priority: {pkt.priority_tag}")
+
+if __name__ == "__main__":
+    test_priority_scheduler()
+
+--- FILE: ./plots/eval_by_nodes.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import random
+import numpy as np
+
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+from experiments.simulation_engine import SimulationEngine
+
+def run_node_density_benchmark():
+    node_counts = [200, 300, 400, 500, 600, 700, 800, 900, 1000]
+    
+    results_pdr, results_delay, results_ro, results_energy = [], [], [], []
+    packets_to_simulate = 500
+    
+    for num_nodes in node_counts:
+        print(f"Benchmarking Node Density: {num_nodes} WBANs...")
+        env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
+        env.deploy_nodes()
+        
+        num_sinks = max(10, int(num_nodes * 0.05))
+        sinks = random.sample(range(num_nodes), num_sinks)
+        wban_nodes = [n for n in range(num_nodes) if n not in sinks]
+        
+        # Calculate Routing Overhead (RO) for Discovery
+        # Hello packets (bytes) broadcasted by all nodes
+        ro_bytes = num_nodes * 40 # Assume 40 bytes per Hello packet
+        
+        for node_id, node in env.nodes.items():
+            node.broadcast_hello(1.0)
+            
+        agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=2000)
+        agent.train(sinks)
+        
+        engine = SimulationEngine(env, agent, sinks, wban_nodes, data_rate=5, max_time=20.0)
+        pdr, avg_delay, avg_hops, energy = engine.run()
+        
+        ro_bytes = num_nodes * 40 + (agent.max_episodes * 15)
+        
+        results_pdr.append(pdr)
+        results_delay.append(avg_delay)
+        results_ro.append(ro_bytes)
+        results_energy.append(energy)
+                
+
+    # Plotting (Fig 7a, 8a, 9a, 11 equivalents)
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle('Performance vs. Number of WBAN Nodes', fontsize=16, fontweight='bold')
+
+    axs[0, 0].plot(node_counts, results_pdr, marker='d', color='navy')
+    axs[0, 0].set(title='(a) PDR vs WBANs', xlabel='Number of WBANs', ylabel='PDR (%)')
+
+    axs[0, 1].plot(node_counts, results_delay, marker='d', color='navy')
+    axs[0, 1].set(title='(b) Average E2E Delay vs WBANs', xlabel='Number of WBANs', ylabel='Delay (ms)')
+
+    axs[1, 0].plot(node_counts, results_ro, marker='d', color='navy')
+    axs[1, 0].set(title='(c) Routing Overhead vs WBANs', xlabel='Number of WBANs', ylabel='RO (Bytes)')
+
+    width = 40
+    axs[1, 1].bar(np.array(node_counts), results_energy, width=width, color='dodgerblue', edgecolor='black')
+    axs[1, 1].set(title='(d) Total Energy Consumption', xlabel='Number of WBANs', ylabel='Energy (J)')
+
+    for ax in axs.flat: ax.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
+
+if __name__ == "__main__":
+    run_node_density_benchmark()
+
+--- FILE: ./plots/__init__.py ---
+
+--- FILE: ./plots/visualize_network.py ---
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use('TkAgg')
+
+import networkx as nx
+from algorithms.network import NetworkEnv
+import networkx as nx
+from algorithms.network import NetworkEnv
+
+def visualize_topology():
+    print("Initializing network for visualization...")
+    # Initialize the same environment you used in main.py
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+
+    # Extract the (x,y) positions we assigned during deployment
+    positions = nx.get_node_attributes(env.graph, 'pos')
+
+    print("Generating plot...")
+    # Set up the matplotlib figure size
+    plt.figure(figsize=(10, 10))
+    
+    # 1. Draw the edges (communication links) with low opacity (alpha) so it's not too cluttered
+    nx.draw_networkx_edges(env.graph, positions, alpha=0.15, edge_color='gray')
+    
+    # 2. Draw the WBAN nodes
+    nx.draw_networkx_nodes(env.graph, positions, node_size=30, node_color='dodgerblue', edgecolors='black')
+    
+    # Optional: If you want to see the node IDs, uncomment the line below
+    # nx.draw_networkx_labels(env.graph, positions, font_size=6, font_color='black')
+
+    # Format the grid
+    plt.title(f"IoMT WBAN Topology\n{env.num_nodes} Nodes, 50m Transmission Range", fontsize=14, fontweight='bold')
+    plt.xlabel("X Coordinate (meters)")
+    plt.ylabel("Y Coordinate (meters)")
+    
+    # Force the axes to reflect the 500x500m physical room
+    plt.xlim(0, 500)
+    plt.ylim(0, 500)
+    
+    # Turn on the grid for easier distance estimation
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+
+    print("Displaying plot. Close the window to exit.")
+    plt.show()
+
+if __name__ == "__main__":
+    visualize_topology()
+
+--- FILE: ./plots/visualize_discovery.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import networkx as nx
+from algorithms.network import NetworkEnv
+
+def visualize_logical_topology(target_id=0):
+    print("Initializing network and running discovery...")
+    # 1. Initialize and build physical environment
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+    
+    # 2. Run Phase 1: Network Discovery (Hello Packets)
+    current_time = 1.0
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(current_time)
+        
+    print(f"Discovery complete. Visualizing logical topology for Node {target_id}...")
+    target_node = env.nodes[target_id]
+    
+    # 3. Categorize nodes based on the target node's routing table
+    one_hop_nodes = []
+    two_hop_nodes = []
+    other_nodes = []
+    
+    for n_id in env.graph.nodes():
+        if n_id == target_id:
+            continue
+        # Check if the node is in the target's discovered neighbor list
+        if n_id in target_node.neighbor_list:
+            if target_node.neighbor_list[n_id]['hops'] == 1:
+                one_hop_nodes.append(n_id)
+            elif target_node.neighbor_list[n_id]['hops'] == 2:
+                two_hop_nodes.append(n_id)
+        else:
+            other_nodes.append(n_id)
+            
+    # Extract positions
+    positions = nx.get_node_attributes(env.graph, 'pos')
+    
+    plt.figure(figsize=(10, 10))
+    
+    # 4. Draw all underlying physical edges very lightly for context
+    nx.draw_networkx_edges(env.graph, positions, alpha=0.1, edge_color='lightgray')
+    
+    # 5. Highlight the logical paths (Edges)
+    # Draw direct paths from Source to 1-hop neighbors
+    one_hop_edges = [(target_id, n) for n in one_hop_nodes]
+    nx.draw_networkx_edges(env.graph, positions, edgelist=one_hop_edges, alpha=0.8, edge_color='limegreen', width=2.0)
+    
+    # Draw paths from 1-hop neighbors to 2-hop neighbors to show *how* they were discovered
+    two_hop_edges = []
+    for n2 in two_hop_nodes:
+        for n1 in one_hop_nodes:
+            if env.graph.has_edge(n1, n2):  # If they are physically connected
+                two_hop_edges.append((n1, n2))
+                
+    nx.draw_networkx_edges(env.graph, positions, edgelist=two_hop_edges, alpha=0.6, edge_color='orange', width=1.5)
+    
+    # 6. Draw Nodes with Color Coding
+    # Undiscovered/Irrelevant nodes
+    nx.draw_networkx_nodes(env.graph, positions, nodelist=other_nodes, node_size=20, node_color='lightgray', edgecolors='black', alpha=0.5, label='Other Nodes')
+    # 2-Hop Neighbors
+    nx.draw_networkx_nodes(env.graph, positions, nodelist=two_hop_nodes, node_size=40, node_color='orange', edgecolors='black', label='2-Hop Neighbors')
+    # 1-Hop Neighbors
+    nx.draw_networkx_nodes(env.graph, positions, nodelist=one_hop_nodes, node_size=60, node_color='limegreen', edgecolors='black', label='1-Hop Neighbors')
+    # The Source Node
+    nx.draw_networkx_nodes(env.graph, positions, nodelist=[target_id], node_size=120, node_color='red', edgecolors='black', label='Source Node')
+    
+    # Format the grid and legend
+    plt.title(f"Logical Network View (Post-Discovery)\nPerspective of Source Node {target_id}", fontsize=14, fontweight='bold')
+    plt.xlabel("X Coordinate (meters)")
+    plt.ylabel("Y Coordinate (meters)")
+    plt.xlim(0, 500)
+    plt.ylim(0, 500)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+    plt.legend(scatterpoints=1, loc='upper right')
+
+    print("Displaying plot. Close the window to exit.")
+    plt.show()
+
+if __name__ == "__main__":
+    # You can change the target_id to view the network from the perspective of any other node
+    visualize_logical_topology(target_id=0)
+
+--- FILE: ./plots/visualize_path.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import networkx as nx
+import random
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+
+def visualize_q_learning_path():
+    print("1. Initializing network...")
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+
+    # Define 10 random sinks (5% of 200 nodes)
+    sinks = random.sample(range(200), 10)
+    wban_nodes = [n for n in range(200) if n not in sinks]
+
+    print("2. Running Discovery...")
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(1.0)
+
+    print(f"3. Training Q-Learning Agent with Sinks: {sinks}...")
+    agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=5000)
+    agent.train(sinks)
+
+    print("4. Tracing optimal path from a random WBAN node...")
+    # Pick a random starting point
+    start_id = random.choice(wban_nodes)
+    path_nodes = [start_id]
+    current_id = start_id
+    visited = set([start_id])
+
+    # Follow the highest Q-value hop-by-hop until we hit ANY sink
+    while current_id not in sinks:
+        node = env.nodes[current_id]
+        
+        if not hasattr(node, 'q_table') or not node.q_table:
+            print(f"ERROR: Path broke at node {current_id} (No Q-table).")
+            break
+
+        current_dist = agent.get_distance_to_closest_sink(current_id, sinks)
+        candidates = [n for n in node.neighbor_list.keys() 
+                      if current_dist > agent.get_distance_to_closest_sink(n, sinks)]
+
+        if not candidates:
+            print(f"ERROR: Path trapped at local minimum at node {current_id}.")
+            break
+
+        # Select the best route based on the trained Q-Table
+        next_hop = agent.select_best_route(current_id, candidates, sinks)
+        
+        if next_hop in visited:
+            print(f"ERROR: Routing loop detected at node {next_hop}!")
+            break
+
+        path_nodes.append(next_hop)
+        visited.add(next_hop)
+        current_id = next_hop
+
+    print(f"\nSUCCESS: Data Packet Path: {path_nodes}")
+    print(f"Total Hops: {len(path_nodes) - 1}")
+
+    # --- Plotting ---
+    positions = nx.get_node_attributes(env.graph, 'pos')
+    plt.figure(figsize=(10, 10))
+
+    nx.draw_networkx_edges(env.graph, positions, alpha=0.1, edge_color='gray')
+    nx.draw_networkx_nodes(env.graph, positions, node_size=20, node_color='lightgray')
+
+    # Highlight all 10 sinks
+    nx.draw_networkx_nodes(env.graph, positions, nodelist=sinks, node_size=80, node_color='blue', marker='s', label='Sinks')
+
+    # Highlight the chosen path
+    if len(path_nodes) > 1:
+        path_edges = [(path_nodes[i], path_nodes[i+1]) for i in range(len(path_nodes)-1)]
+        nx.draw_networkx_nodes(env.graph, positions, nodelist=[start_id], node_size=150, node_color='limegreen', marker='*', label=f'Source (Node {start_id})')
+        nx.draw_networkx_nodes(env.graph, positions, nodelist=[start_id], node_size=150, node_color='limegreen', node_shape='^', label=f'Source (Node {start_id})')
+        nx.draw_networkx_nodes(env.graph, positions, nodelist=[start_id], node_size=150, node_color='limegreen', marker='*', label=f'Source (Node {start_id})')
+
+    plt.title("Multi-Sink Q-Learning Routing Path Verification", fontsize=14, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend(loc='upper right')
+    plt.show()
+
+if __name__ == "__main__":
+    visualize_q_learning_path()
+
+--- FILE: ./plots/evaluation_graphs.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import random
+import numpy as np
+
+# Adjust imports to match your new directory structure
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+
+def run_benchmark():
+    node_counts = [200, 400, 600, 800, 1000]
+    
+    # Results arrays
+    results_pdr = []
+    results_delay = []
+    results_hops = []
+    results_energy = []
+    
+    packets_to_simulate = 500
+    
+    for num_nodes in node_counts:
+        print(f"\n--- Benchmarking QQAR with {num_nodes} nodes ---")
+        env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
+        env.deploy_nodes()
+        
+        # 5% sinks as per the paper
+        num_sinks = max(10, int(num_nodes * 0.05))
+        sinks = random.sample(range(num_nodes), num_sinks)
+        wban_nodes = [n for n in range(num_nodes) if n not in sinks]
+        
+        for node_id, node in env.nodes.items():
+            node.broadcast_hello(1.0)
+            
+        agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=2000)
+        agent.train(sinks)
+        
+        # --- Run Packet Simulation ---
+        successful_packets = 0
+        total_hops = 0
+        total_delay = 0.0
+        energy_consumed = 0.0
+        
+        for _ in range(packets_to_simulate):
+            current_id = random.choice(wban_nodes)
+            hops = 0
+            visited = set([current_id])
+            packet_dropped = False
+            
+            while current_id not in sinks:
+                node = env.nodes[current_id]
+                if not hasattr(node, 'q_table') or not node.q_table:
+                    packet_dropped = True
+                    break
+                    
+                current_dist = agent.get_distance_to_closest_sink(current_id, sinks)
+                candidates = [n for n in node.neighbor_list.keys() if current_dist > agent.get_distance_to_closest_sink(n, sinks)]
+                
+                if not candidates:
+                    packet_dropped = True
+                    break
+                    
+                next_hop = agent.select_best_route(current_id, candidates, sinks)
+                
+                if next_hop in visited:
+                    packet_dropped = True # Routing loop
+                    break
+                    
+                # Simulate energy drain (Transmission + Reception)
+                env.nodes[current_id].record_transmission(success=True)  # Tx power (Paper Table 4)
+                env.nodes[next_hop].energy -= 0.395   # Rx power (Paper Table 4)
+                env.nodes[next_hop].pkt_in += 1;
+                energy_consumed += 1.055
+                
+                # Accumulate delay (Placeholder 10ms per hop)
+                total_delay += 10.0 
+                
+                visited.add(next_hop)
+                current_id = next_hop
+                hops += 1
+                
+                if hops > 50: # TTL expired
+                    packet_dropped = True
+                    break
+                    
+            if not packet_dropped:
+                successful_packets += 1
+                total_hops += hops
+                
+        # Calculate Metrics
+        pdr = (successful_packets / packets_to_simulate) * 100
+        avg_hops = total_hops / max(1, successful_packets)
+        avg_delay = total_delay / max(1, successful_packets)
+        
+        results_pdr.append(pdr)
+        results_delay.append(avg_delay)
+        results_hops.append(avg_hops)
+        results_energy.append(energy_consumed)
+        
+        print(f"PDR: {pdr:.1f}%, Avg Hops: {avg_hops:.2f}, Avg Delay: {avg_delay:.1f}ms, Energy: {energy_consumed:.1f}J")
+
+    # --- Plotting the 4x4 Dashboard ---
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle('QQAR Performance Evaluation (Isolated)', fontsize=16, fontweight='bold')
+
+    # 1. PDR
+    axs[0, 0].plot(node_counts, results_pdr, marker='d', color='navy', linestyle='-', linewidth=2)
+    axs[0, 0].set_title('Packet Delivery Ratio (PDR)')
+    axs[0, 0].set_xlabel('Number of WBANs')
+    axs[0, 0].set_ylabel('PDR (%)')
+    axs[0, 0].grid(True, linestyle='--', alpha=0.6)
+
+    # 2. Average E2E Delay
+    axs[0, 1].plot(node_counts, results_delay, marker='d', color='navy', linestyle='-', linewidth=2)
+    axs[0, 1].set_title('Average E2E Delay')
+    axs[0, 1].set_xlabel('Number of WBANs')
+    axs[0, 1].set_ylabel('Delay (ms)')
+    axs[0, 1].grid(True, linestyle='--', alpha=0.6)
+
+    # 3. Hop Count
+    # Using bar charts to match paper styling (Figure 10)
+    width = 40
+    axs[1, 0].bar(np.array(node_counts), results_hops, width=width, color='dodgerblue', edgecolor='black')
+    axs[1, 0].set_title('Average Hop Count')
+    axs[1, 0].set_xlabel('Number of WBANs')
+    axs[1, 0].set_ylabel('Hop Count')
+    axs[1, 0].grid(True, axis='y', linestyle='--', alpha=0.6)
+
+    # 4. Energy Consumption
+    axs[1, 1].bar(np.array(node_counts), results_energy, width=width, color='dodgerblue', edgecolor='black')
+    axs[1, 1].set_title('Total Energy Consumption')
+    axs[1, 1].set_xlabel('Number of WBANs')
+    axs[1, 1].set_ylabel('Energy (J)')
+    axs[1, 1].grid(True, axis='y', linestyle='--', alpha=0.6)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    print("Displaying evaluation graphs...")
+    plt.show()
+
+if __name__ == "__main__":
+    run_benchmark()
+
+--- FILE: ./plots/visualize_convergence.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import random
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+
+def plot_convergence():
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+    
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(1.0)
+
+    sinks = random.sample(range(200), 10)
+    agent = QLearningAgent(env, max_episodes=2000)
+    wban_nodes = [n for n in range(200) if n not in sinks]
+    
+    cumulative_rewards = []
+    
+    # Custom training loop to track rewards per episode
+    for episode in range(agent.max_episodes):
+        current_id = random.choice(wban_nodes)
+        steps = 0
+        episode_reward = 0
+        epsilon = max(0.1, 1.0 - episode / (agent.max_episodes * 0.5))
+        
+        while current_id not in sinks and steps < 50:
+            current_node = env.nodes[current_id]
+            current_dist = agent.get_distance_to_closest_sink(current_id, sinks)
+            candidates = [n for n in current_node.neighbor_list.keys() 
+                          if current_dist > agent.get_distance_to_closest_sink(n, sinks)]
+                          
+            if not candidates:
+                episode_reward -= 100 # Penalty for dead end
+                break 
+                
+            if random.random() < epsilon:
+                action_id = random.choice(candidates)
+            else:
+                action_id = max(candidates, key=lambda a: agent.get_q_value(current_id, a))
+                
+            reward = agent.calculate_reward(current_id, action_id, sinks, candidates)
+            episode_reward += reward
+            
+            if action_id in sinks:
+                max_next_q = 0.0
+            else:
+                next_node = env.nodes[action_id]
+                next_dist = agent.get_distance_to_closest_sink(action_id, sinks)
+                next_candidates = [n for n in next_node.neighbor_list.keys() 
+                                   if next_dist > agent.get_distance_to_closest_sink(n, sinks)]
+                max_next_q = max([agent.get_q_value(action_id, a) for a in next_candidates]) if next_candidates else 0.0
+                
+            old_q = agent.get_q_value(current_id, action_id)
+            new_q = old_q + agent.alpha * (reward + agent.gamma * max_next_q - old_q)
+            agent.set_q_value(current_id, action_id, new_q)
+            
+            current_id = action_id
+            steps += 1
+            
+        cumulative_rewards.append(episode_reward)
+
+    # Plot the learning curve
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(agent.max_episodes), cumulative_rewards, color='navy', label='QQAR')
+    plt.title("Algorithm Convergence (Cumulative Reward vs Episodes)", fontweight='bold')
+    plt.xlabel("Episodes")
+    plt.ylabel("Cumulative Reward")
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.show()
+
+if __name__ == "__main__":
+    plot_convergence()
+
+--- FILE: ./plots/eval_by_data_rate.py ---
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import random
+import numpy as np
+
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+from experiments.simulation_engine import SimulationEngine
+
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import random
+import numpy as np
+
+from algorithms.network import NetworkEnv
+from algorithms.q_learning import QLearningAgent
+from experiments.simulation_engine import SimulationEngine # Import your new engine!
+
+def run_data_rate_benchmark():
+    data_rates = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+    
+    results_pdr, results_delay, results_ro, results_hops = [], [], [], []
+    
+    print("Initializing static 200-node network for data rate tests...")
+    env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
+    env.deploy_nodes()
+    sinks = random.sample(range(200), 10)
+    wban_nodes = [n for n in range(200) if n not in sinks]
+    
+    for node_id, node in env.nodes.items():
+        node.broadcast_hello(1.0)
+        
+    agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=2000)
+    agent.train(sinks)
+    
+    for rate in data_rates:
+        # Run a 10-second global time simulation for each data rate
+        engine = SimulationEngine(env, agent, sinks, wban_nodes, data_rate=rate, max_time=10.0)
+        pdr, avg_delay, avg_hops, energy = engine.run()
+        
+        # Routing overhead scales with data rate
+        ro_bytes = (200 * 40) + (rate * 5) 
+        
+        results_pdr.append(pdr)
+        results_delay.append(avg_delay)
+        results_ro.append(ro_bytes)
+        results_hops.append(avg_hops)
+        
+        print(f"Result -> PDR: {pdr:.1f}%, Delay: {avg_delay:.1f}ms, Hops: {avg_hops:.2f}")
+
+    # Plotting (Fig 7b, 8b, 9b, 10 equivalents)
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle('Performance vs. Source Data Rate (Packets/s)', fontsize=16, fontweight='bold')
+
+    axs[0, 0].plot(data_rates, results_pdr, marker='d', color='navy')
+    axs[0, 0].set(title='(a) PDR vs Data Rate', xlabel='Source Data Rate', ylabel='PDR (%)')
+
+    axs[0, 1].plot(data_rates, results_delay, marker='d', color='navy')
+    axs[0, 1].set(title='(b) E2E Delay vs Data Rate', xlabel='Source Data Rate', ylabel='Delay (ms)')
+
+    axs[1, 0].plot(data_rates, results_ro, marker='d', color='navy')
+    axs[1, 0].set(title='(c) Routing Overhead vs Data Rate', xlabel='Source Data Rate', ylabel='RO (Bytes)')
+
+    width = 2
+    axs[1, 1].bar(np.array(data_rates), results_hops, width=width, color='dodgerblue', edgecolor='black')
+    axs[1, 1].set(title='(d) Average Hop Count', xlabel='Source Data Rate', ylabel='Hop Count')
+
+    for ax in axs.flat: ax.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
+
+if __name__ == "__main__":
+    run_data_rate_benchmark()
+
+--- FILE: ./algorithms/__init__.py ---
+
+--- FILE: ./algorithms/network.py ---
+import networkx as nx
+import random
+import math
+from algorithms.node import Node
+
+class NetworkEnv:
+    def __init__(self, area_size=500, num_nodes=200, tx_range=50):
+        self.area_size = area_size
+        self.num_nodes = num_nodes
+        self.tx_range = tx_range
+        
+        self.nodes = {} # Dictionary mapping node_id -> Node object
+        self.graph = nx.Graph() # The physical radio-frequency graph
+
+    def deploy_nodes(self):
+        """
+        Scatters nodes randomly across the 500x500 grid and builds physical links.
+        """
+        print(f"Deploying {self.num_nodes} nodes in a {self.area_size}x{self.area_size}m area...")
+        
+        # 1. Create nodes and assign random (x, y) coordinates
+        for i in range(self.num_nodes):
+            x = random.uniform(0, self.area_size)
+            y = random.uniform(0, self.area_size)
+            
+            # Initialize our Node from node.py
+            node = Node(node_id=i)
+            node.network_env = self # Give the node a reference to the physical world
+            
+            self.nodes[i] = node
+            self.graph.add_node(i, pos=(x, y))
+            
+        # 2. Build physical links based on the 50m transmission range
+        positions = nx.get_node_attributes(self.graph, 'pos')
+        for i in range(self.num_nodes):
+            for j in range(i + 1, self.num_nodes):
+                # Calculate Euclidean distance
+                dist = math.hypot(positions[i][0] - positions[j][0], 
+                                  positions[i][1] - positions[j][1])
+                
+                # If they are within 50 meters, they can hear each other's radio
+                if dist <= self.tx_range:
+                    self.graph.add_edge(i, j, distance=dist)
+                    
+        print(f"Network built. Total physical links established: {self.graph.number_of_edges()}")
+
+    def broadcast(self, sender_node, packet):
+        """
+        Simulates the physical transmission of a radio wave.
+        Only nodes directly connected in the physical graph will receive the packet.
+        """
+        physical_neighbors = list(self.graph.neighbors(sender_node.node_id))
+        
+        for neighbor_id in physical_neighbors:
+            receiving_node = self.nodes[neighbor_id]
+            receiving_node.receive_hello(packet)
+            
+    def get_distance(self, node_a_id, node_b_id):
+        """Helper to calculate Euclidean distance between two nodes."""
+        pos_a = self.graph.nodes[node_a_id]['pos']
+        pos_b = self.graph.nodes[node_b_id]['pos']
+        import math
+        return math.hypot(pos_a[0] - pos_b[0], pos_a[1] - pos_b[1])
+
+--- FILE: ./algorithms/node.py ---
+import math
+
+class HelloPacket:
+    def __init__(self, source_id, relay_id, time_slot, energy_level):
+        self.sn = source_id
+        self.rn = relay_id
+        self.t_a = time_slot
+        self.energy = energy_level
+
+class DataPacket:
+    def __init__(self, packet_id, source_id, sink_id, priority_tag, creation_time, deadline_duration):
+        self.packet_id = packet_id
+        self.source_id = source_id
+        self.sink_id = sink_id
+        self.priority_tag = priority_tag
+        self.creation_time = creation_time
+        self.absolute_deadline = creation_time + deadline_duration
+
+class PriorityScheduler:
+    def __init__(self):
+        self.critical_queue = []
+        self.delay_sensitive_queue = []
+        self.reliability_sensitive_queue = []
+        self.ordinary_queue = []
+
+    def enqueue_packet(self, packet):
+        if packet.priority_tag == 'High+': self.critical_queue.append(packet)
+        elif packet.priority_tag == 'High': self.delay_sensitive_queue.append(packet)
+        elif packet.priority_tag == 'Med': self.reliability_sensitive_queue.append(packet)
+        else: self.ordinary_queue.append(packet)
+
+    def manage_timeouts(self, current_time, estimated_tx_time):
+        lower_queues = [self.delay_sensitive_queue, self.reliability_sensitive_queue, self.ordinary_queue]
+        for q in lower_queues:
+            for i in range(len(q) - 1, -1, -1):
+                if (q[i].absolute_deadline - current_time) <= estimated_tx_time:
+                    p = q.pop(i)
+                    p.priority_tag = 'High+'
+                    self.critical_queue.append(p)
+
+    def get_next_packet_for_transmission(self):
+        for q in [self.critical_queue, self.delay_sensitive_queue, self.reliability_sensitive_queue, self.ordinary_queue]:
+            if q: return q.pop(0)
+        return None
+
+class Node:
+    def __init__(self, node_id, initial_energy=100.0):
+        self.node_id = node_id
+        self.energy = initial_energy
+        self.neighbor_list = {}
+        self.network_env = None
+        self.scheduler = PriorityScheduler()
+        
+        # Dynamic Trackers (Eq. 20, 23)
+        self.total_tx = 0
+        self.success_tx = 0
+        self.link_reliability = 1.0 
+        self.pkt_in = 0
+        self.pkt_out = 0
+        self.avg_traffic_load = 0.0
+
+    def broadcast_hello(self, current_time):
+        packet = HelloPacket(self.node_id, self.node_id, current_time, self.energy)
+        self.network_env.broadcast(self, packet)
+
+    def receive_hello(self, packet):
+        # 1-hop Discovery
+        if packet.sn == packet.rn:
+            self.neighbor_list[packet.sn] = {'hops': 1, 'energy': packet.energy}
+            # Rebroadcast for 2-hop discovery (Algorithm 1, line 7)
+            relay_packet = HelloPacket(packet.sn, self.node_id, packet.t_a, self.energy)
+            self.network_env.broadcast(self, relay_packet)
+        # 2-hop Discovery
+        elif packet.sn != self.node_id:
+            if packet.sn not in self.neighbor_list:
+                self.neighbor_list[packet.sn] = {'hops': 2, 'energy': packet.energy}
+
+    def get_dynamic_delay(self):
+        """Eq. 15 & 16: Dynamic delay based on queue size."""
+        pkt_b = sum(len(q) for q in [self.scheduler.critical_queue, self.scheduler.delay_sensitive_queue, 
+                                     self.scheduler.reliability_sensitive_queue, self.scheduler.ordinary_queue])
+        t_nd = 0.5 * ((pkt_b / 100.0) + 1) + 0.5 * 0.01
+        return max(0.01, 1 - (1 / (t_nd + 1)))
+
+    def record_transmission(self, success=True):
+        """Eq. 20 & 23: Update metrics after every hop."""
+        self.total_tx += 1
+        self.pkt_out += 1
+        if success: self.success_tx += 1
+        delta = 0.4 # Paper weighting factor
+        self.link_reliability = (1 - delta) * self.link_reliability + delta * (self.success_tx / self.total_tx)
+        if self.pkt_out > 0:
+            self.avg_traffic_load = self.pkt_in / self.pkt_out
+--- FILE: ./algorithms/q_learning.py ---
+import random
+
+class QLearningAgent:
+    def __init__(self, network_env, alpha=0.5, gamma=0.9, max_episodes=5000):
+        self.env = network_env
+        self.alpha = alpha               
+        self.gamma = gamma               
+        self.max_episodes = max_episodes 
+        
+        # Reward weights (A, B, C, D must sum to 1.0)
+        self.weights = {'A': 0.25, 'B': 0.25, 'C': 0.25, 'D': 0.25}
+
+    def get_q_value(self, state_id, action_id):
+        node = self.env.nodes[state_id]
+        if not hasattr(node, 'q_table'):
+            node.q_table = {}
+        return node.q_table.get(action_id, 0.0)
+
+    def set_q_value(self, state_id, action_id, value):
+        node = self.env.nodes[state_id]
+        if not hasattr(node, 'q_table'):
+            node.q_table = {}
+        node.q_table[action_id] = value
+
+    def get_distance_to_closest_sink(self, node_id, sinks):
+        """Finds the Euclidean distance to the nearest sink node."""
+        return min([self.env.get_distance(node_id, s) for s in sinks])
+
+    def calculate_reward(self, current_id, next_hop_id, sinks, candidates):
+        """Calculates the normalized multi-parameter reward based on Eq. 25."""
+        if next_hop_id in sinks:
+            return 100.0  # r_max: Reached ANY destination sink
+            
+        next_node = self.env.nodes[next_hop_id]
+        
+        # Calculate raw values for the chosen next hop
+        dist_current = self.get_distance_to_closest_sink(current_id, sinks)
+        dist_next = self.get_distance_to_closest_sink(next_hop_id, sinks)
+        z_raw = max(0.01, dist_current - dist_next) # Velocity (Progress)
+        
+        lr_raw = getattr(next_node, 'link_reliability', 1.0)
+        e_raw = next_node.energy # Using residual energy to maximize reward
+        d_raw = 1.0 / max(0.01, getattr(next_node, 'e2e_delay', 0.05)) # Inverse delay
+        
+        # Calculate sums across all candidates for normalization (Eq. 25 denominator)
+        sum_lr, sum_z, sum_e, sum_d = 0.01, 0.01, 0.01, 0.01 # Prevent div by zero
+        for c_id in candidates:
+            c_node = self.env.nodes[c_id]
+            sum_lr += c_node.link_reliability
+            c_dist = self.get_distance_to_closest_sink(c_id, sinks)
+            sum_z += max(0.01, dist_current - c_dist)
+            sum_e += c_node.energy
+            sum_d += 1.0 / c_node.get_dynamic_delay() # Dynamic
+            
+        # Eq 25: Normalized multi-parameter reward
+        r_val = (self.weights['A'] * (lr_raw / sum_lr) + 
+                 self.weights['B'] * (z_raw / sum_z) + 
+                 self.weights['C'] * (d_raw / sum_d) + 
+                 self.weights['D'] * (e_raw / sum_e)) * 10
+                 
+        return r_val
+
+    def train(self, sinks):
+        """
+        Decentralized training: Spawns random packets from random nodes 
+        to naturally build Q-tables across the entire network.
+        """
+        print(f"Starting Q-Learning training with Sinks: {sinks}")
+        
+        # Get list of all WBAN nodes (excluding sinks)
+        wban_nodes = [n for n in self.env.nodes.keys() if n not in sinks]
+        
+        for episode in range(self.max_episodes):
+            # Pick a random source node for this episode
+            current_id = random.choice(wban_nodes)
+            steps = 0
+            
+            epsilon = max(0.1, 1.0 - episode / (self.max_episodes * 0.5))
+            
+            while current_id not in sinks and steps < 50:
+                current_node = self.env.nodes[current_id]
+                
+                # Filter candidates: Only pick neighbors that bring us closer to the nearest sink
+                current_dist = self.get_distance_to_closest_sink(current_id, sinks)
+                candidates = [n_id for n_id in current_node.neighbor_list.keys() 
+                              if current_dist > self.get_distance_to_closest_sink(n_id, sinks)]
+                              
+                if not candidates:
+                    break # Trapped in a local minimum
+                    
+                # Action Selection
+                if random.random() < epsilon:
+                    action_id = random.choice(candidates)
+                else:
+                    action_id = max(candidates, key=lambda a: self.get_q_value(current_id, a))
+                    
+                reward = self.calculate_reward(current_id, action_id, sinks, candidates)
+                
+                # Bellman Equation
+                if action_id in sinks:
+                    max_next_q = 0.0
+                else:
+                    next_node = self.env.nodes[action_id]
+                    next_dist = self.get_distance_to_closest_sink(action_id, sinks)
+                    next_candidates = [n for n in next_node.neighbor_list.keys() 
+                                       if next_dist > self.get_distance_to_closest_sink(n, sinks)]
+                    
+                    max_next_q = max([self.get_q_value(action_id, a) for a in next_candidates]) if next_candidates else 0.0
+                    
+                old_q = self.get_q_value(current_id, action_id)
+                new_q = old_q + self.alpha * (reward + self.gamma * max_next_q - old_q)
+                self.set_q_value(current_id, action_id, new_q)
+                
+                current_id = action_id
+                steps += 1
+                
+        print("Training complete! Network-wide Q-Tables populated.")
+
+    def select_best_route(self, current_id, candidates, sinks):
+        """
+        Algorithm 4 (Lines 26-28): Fallback congestion control.
+        """
+        sorted_candidates = sorted(candidates, key=lambda c: self.get_q_value(current_id, c), reverse=True)
+        best_candidate = sorted_candidates[0]
+        best_node = self.env.nodes[best_candidate]
+        
+        # Assume nodes have a traffic load tracker. Fallback if overloaded or dying.
+        # L_th is 0.5 as defined in the paper.
+        traffic_load = getattr(best_node, 'avg_traffic_load', 0.0)
+        
+        if (traffic_load > 0.5 or best_node.energy < 20.0) and len(sorted_candidates) > 1:
+            return sorted_candidates[1] # Use the alternative path
+            
+        return best_candidate
+
