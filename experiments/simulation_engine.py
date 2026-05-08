@@ -12,9 +12,8 @@ class SimulationEngine:
         self.current_time = 0.0
         self.time_step = 0.01
         
-        # RESET TRACKERS to prevent KeyErrors and stale data
         for node in self.env.nodes.values():
-            node.scheduler = PriorityScheduler() # <--- Cleanly initializes a fresh queue
+            node.scheduler = PriorityScheduler()
             node.pkt_in = 0
             node.pkt_out = 0
             node.total_tx = 0
