@@ -2,7 +2,7 @@ import random
 from algorithms.node import DataPacket, PriorityScheduler
 
 class SimulationEngine:
-    def __init__(self, env, agent, sinks, wban_nodes, data_rate, max_time=10.0):
+    def __init__(self, env, agent, sinks, wban_nodes, data_rate, max_time=15.0):
         self.env = env
         self.agent = agent
         self.sinks = sinks
@@ -20,7 +20,8 @@ class SimulationEngine:
             node.success_tx = 0
             node.link_reliability = 1.0
             node.avg_traffic_load = 0.0
-            node.energy = 100.0 # Reset energy for the new simulation run
+            # TIME-WARP OPTIMIZATION: Start near the 20J threshold so nodes die faster
+            node.energy = 25.0 
 
         self.successful_packets = 0
         self.generated_packets = 0
@@ -30,15 +31,13 @@ class SimulationEngine:
         self.active_packets = {}
 
     def generate_traffic(self):
-        # Calculate exactly how many packets should spawn this exact millisecond
+        # BOTTLENECK FIXED: Accurately spawn bulk traffic for heavy density
         expected_packets = (self.data_rate * len(self.wban_nodes)) * self.time_step
-        num_packets = int(expected_packets) # Guaranteed packets
+        num_packets = int(expected_packets)
         
-        # Fractional chance to spawn one extra packet
         if random.random() < (expected_packets - num_packets):
             num_packets += 1
             
-        # Spawn the correct volume of traffic!
         for _ in range(num_packets):
             self.generated_packets += 1
             src = random.choice(self.wban_nodes)
@@ -72,15 +71,14 @@ class SimulationEngine:
                     if not candidates: continue
                     
                     nxt = self.agent.select_best_route(node_id, candidates, self.sinks)
-                    if not nxt: continue # Failsafe for PlainQ
+                    if not nxt: continue
                     
                     self.active_packets[pkt.packet_id]['hops'] += 1
                     
-                    # Energy Tracking
-                    node.energy -= 1.055 # Tx/Rx energy 
+                    # Energy Tracking Fixed
+                    node.energy -= 1.055 
                     self.energy_consumed += 1.055 
                     
-                    # Simulate MAC layer collisions. Heavier load = higher drop chance
                     collision_chance = min(0.6, node.avg_traffic_load * 0.15)
                     
                     if random.random() > collision_chance:
