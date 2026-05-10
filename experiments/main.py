@@ -1,4 +1,4 @@
-from network import NetworkEnv
+from algorithms.network import NetworkEnv
 
 def main():
     # 1. Initialize and build the physical environment (200 nodes, 50m range)

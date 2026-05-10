@@ -1,141 +1,111 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import random
 import numpy as np
+import os
 
-# Adjust imports to match your new directory structure
 from algorithms.network import NetworkEnv
+from experiments.simulation_engine import SimulationEngine
 from algorithms.q_learning import QLearningAgent
+from algorithms.one_hop_qqar import OneHopQQARAgent
+from algorithms.plain_q_learning import PlainQLearningAgent
 
-def run_benchmark():
+def run_3way_topology_benchmark():
+    NUM_RUNS = 3
     node_counts = [200, 400, 600, 800, 1000]
+    agents_list = ['QQAR (2-Hop)', 'QQAR (1-Hop)', 'Plain Q (1-Hop)']
     
-    # Results arrays
-    results_pdr = []
-    results_delay = []
-    results_hops = []
-    results_energy = []
-    
-    packets_to_simulate = 500
+    final_results = {agent: {metric: [] for metric in ['pdr', 'delay', 'hops', 'energy']} for agent in agents_list}
     
     for num_nodes in node_counts:
-        print(f"\n--- Benchmarking QQAR with {num_nodes} nodes ---")
-        env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
-        env.deploy_nodes()
+        print(f"\n{'='*50}")
+        print(f" Evaluating Topology: {num_nodes} WBAN Nodes (Avg: {NUM_RUNS} runs)")
+        print(f"{'='*50}")
         
-        # 5% sinks as per the paper
-        num_sinks = max(10, int(num_nodes * 0.05))
-        sinks = random.sample(range(num_nodes), num_sinks)
-        wban_nodes = [n for n in range(num_nodes) if n not in sinks]
+        runs_data = {agent: {'pdr': [], 'delay': [], 'hops': [], 'energy': []} for agent in agents_list}
         
-        for node_id, node in env.nodes.items():
-            node.broadcast_hello(1.0)
+        for run in range(NUM_RUNS):
+            random.seed(42 + run)
             
-        agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=2000)
-        agent.train(sinks)
-        
-        # --- Run Packet Simulation ---
-        successful_packets = 0
-        total_hops = 0
-        total_delay = 0.0
-        energy_consumed = 0.0
-        
-        for _ in range(packets_to_simulate):
-            current_id = random.choice(wban_nodes)
-            hops = 0
-            visited = set([current_id])
-            packet_dropped = False
+            env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
+            env.deploy_nodes()
+            sinks = random.sample(range(num_nodes), max(10, int(num_nodes * 0.05)))
+            wban_nodes = [n for n in range(num_nodes) if n not in sinks]
             
-            while current_id not in sinks:
-                node = env.nodes[current_id]
-                if not hasattr(node, 'q_table') or not node.q_table:
-                    packet_dropped = True
-                    break
-                    
-                current_dist = agent.get_distance_to_closest_sink(current_id, sinks)
-                candidates = [n for n in node.neighbor_list.keys() if current_dist > agent.get_distance_to_closest_sink(n, sinks)]
+            for node_id, node in env.nodes.items():
+                node.broadcast_hello(1.0)
+            
+            agent_instances = {
+                'QQAR (2-Hop)': QLearningAgent(env, max_episodes=2000),
+                'QQAR (1-Hop)': OneHopQQARAgent(env, max_episodes=2000),
+                'Plain Q (1-Hop)': PlainQLearningAgent(env, max_episodes=2000)
+            }
+            
+            for agent_name, agent in agent_instances.items():
+                agent.train(sinks)
+                engine = SimulationEngine(env, agent, sinks, wban_nodes, data_rate=5, max_time=150.0)
+                pdr, delay, hops, energy = engine.run()
                 
-                if not candidates:
-                    packet_dropped = True
-                    break
-                    
-                next_hop = agent.select_best_route(current_id, candidates, sinks)
-                
-                if next_hop in visited:
-                    packet_dropped = True # Routing loop
-                    break
-                    
-                # Simulate energy drain (Transmission + Reception)
-                env.nodes[current_id].record_transmission(success=True)  # Tx power (Paper Table 4)
-                env.nodes[next_hop].energy -= 0.395   # Rx power (Paper Table 4)
-                env.nodes[next_hop].pkt_in += 1;
-                energy_consumed += 1.055
-                
-                # Accumulate delay (Placeholder 10ms per hop)
-                total_delay += 10.0 
-                
-                visited.add(next_hop)
-                current_id = next_hop
-                hops += 1
-                
-                if hops > 50: # TTL expired
-                    packet_dropped = True
-                    break
-                    
-            if not packet_dropped:
-                successful_packets += 1
-                total_hops += hops
-                
-        # Calculate Metrics
-        pdr = (successful_packets / packets_to_simulate) * 100
-        avg_hops = total_hops / max(1, successful_packets)
-        avg_delay = total_delay / max(1, successful_packets)
-        
-        results_pdr.append(pdr)
-        results_delay.append(avg_delay)
-        results_hops.append(avg_hops)
-        results_energy.append(energy_consumed)
-        
-        print(f"PDR: {pdr:.1f}%, Avg Hops: {avg_hops:.2f}, Avg Delay: {avg_delay:.1f}ms, Energy: {energy_consumed:.1f}J")
+                runs_data[agent_name]['pdr'].append(pdr)
+                runs_data[agent_name]['delay'].append(delay)
+                runs_data[agent_name]['hops'].append(hops)
+                runs_data[agent_name]['energy'].append(energy)
 
-    # --- Plotting the 4x4 Dashboard ---
-    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle('QQAR Performance Evaluation (Isolated)', fontsize=16, fontweight='bold')
+        # Average Results
+        for agent in agents_list:
+            final_results[agent]['pdr'].append(np.mean(runs_data[agent]['pdr']))
+            final_results[agent]['delay'].append(np.mean(runs_data[agent]['delay']))
+            final_results[agent]['hops'].append(np.mean(runs_data[agent]['hops']))
+            final_results[agent]['energy'].append(np.mean(runs_data[agent]['energy']))
 
-    # 1. PDR
-    axs[0, 0].plot(node_counts, results_pdr, marker='d', color='navy', linestyle='-', linewidth=2)
-    axs[0, 0].set_title('Packet Delivery Ratio (PDR)')
-    axs[0, 0].set_xlabel('Number of WBANs')
-    axs[0, 0].set_ylabel('PDR (%)')
-    axs[0, 0].grid(True, linestyle='--', alpha=0.6)
+    # --- Plotting ---
+    fig, axs = plt.subplots(2, 2, figsize=(15, 12))
+    fig.suptitle(f'Comprehensive Topology Evaluation (Averaged over {NUM_RUNS} runs)', fontsize=16, fontweight='bold')
 
-    # 2. Average E2E Delay
-    axs[0, 1].plot(node_counts, results_delay, marker='d', color='navy', linestyle='-', linewidth=2)
-    axs[0, 1].set_title('Average E2E Delay')
-    axs[0, 1].set_xlabel('Number of WBANs')
-    axs[0, 1].set_ylabel('Delay (ms)')
-    axs[0, 1].grid(True, linestyle='--', alpha=0.6)
+    colors = {'QQAR (2-Hop)': 'navy', 'QQAR (1-Hop)': 'forestgreen', 'Plain Q (1-Hop)': 'darkorange'}
+    markers = {'QQAR (2-Hop)': 'd', 'QQAR (1-Hop)': '^', 'Plain Q (1-Hop)': 's'}
 
-    # 3. Hop Count
-    # Using bar charts to match paper styling (Figure 10)
-    width = 40
-    axs[1, 0].bar(np.array(node_counts), results_hops, width=width, color='dodgerblue', edgecolor='black')
-    axs[1, 0].set_title('Average Hop Count')
-    axs[1, 0].set_xlabel('Number of WBANs')
-    axs[1, 0].set_ylabel('Hop Count')
-    axs[1, 0].grid(True, axis='y', linestyle='--', alpha=0.6)
+    # PDR
+    for agent in agents_list:
+        axs[0, 0].plot(node_counts, final_results[agent]['pdr'], marker=markers[agent], color=colors[agent], label=agent, linewidth=2)
+    axs[0, 0].set(title='(a) PDR vs WBANs', xlabel='Number of WBANs', ylabel='PDR (%)')
+    axs[0, 0].legend()
 
-    # 4. Energy Consumption
-    axs[1, 1].bar(np.array(node_counts), results_energy, width=width, color='dodgerblue', edgecolor='black')
-    axs[1, 1].set_title('Total Energy Consumption')
-    axs[1, 1].set_xlabel('Number of WBANs')
-    axs[1, 1].set_ylabel('Energy (J)')
-    axs[1, 1].grid(True, axis='y', linestyle='--', alpha=0.6)
+    # Delay
+    for agent in agents_list:
+        axs[0, 1].plot(node_counts, final_results[agent]['delay'], marker=markers[agent], color=colors[agent], label=agent, linewidth=2)
+    axs[0, 1].set(title='(b) Average E2E Delay vs WBANs', xlabel='Number of WBANs', ylabel='Delay (ms)')
+    axs[0, 1].legend()
 
+    # Hop Count (Grouped Bar Chart)
+    x = np.arange(len(node_counts))
+    width = 0.25
+    axs[1, 0].bar(x - width, final_results['QQAR (2-Hop)']['hops'], width, label='QQAR (2-Hop)', color=colors['QQAR (2-Hop)'], edgecolor='black')
+    axs[1, 0].bar(x, final_results['QQAR (1-Hop)']['hops'], width, label='QQAR (1-Hop)', color=colors['QQAR (1-Hop)'], edgecolor='black')
+    axs[1, 0].bar(x + width, final_results['Plain Q (1-Hop)']['hops'], width, label='Plain Q (1-Hop)', color=colors['Plain Q (1-Hop)'], edgecolor='black')
+    axs[1, 0].set(title='(c) Average Hop Count', xlabel='Number of WBANs', ylabel='Hop Count')
+    axs[1, 0].set_xticks(x)
+    axs[1, 0].set_xticklabels(node_counts)
+    axs[1, 0].legend()
+
+    # Energy Consumption
+    axs[1, 1].bar(x - width, final_results['QQAR (2-Hop)']['energy'], width, label='QQAR (2-Hop)', color=colors['QQAR (2-Hop)'], edgecolor='black')
+    axs[1, 1].bar(x, final_results['QQAR (1-Hop)']['energy'], width, label='QQAR (1-Hop)', color=colors['QQAR (1-Hop)'], edgecolor='black')
+    axs[1, 1].bar(x + width, final_results['Plain Q (1-Hop)']['energy'], width, label='Plain Q (1-Hop)', color=colors['Plain Q (1-Hop)'], edgecolor='black')
+    axs[1, 1].set(title='(d) Total Energy Consumption', xlabel='Number of WBANs', ylabel='Energy (J)')
+    axs[1, 1].set_xticks(x)
+    axs[1, 1].set_xticklabels(node_counts)
+    axs[1, 1].legend()
+
+    for ax in axs.flat: ax.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    print("Displaying evaluation graphs...")
-    plt.show()
+    
+    save_dir = 'results/figures'
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, 'evaluation_topology_graphs.png')
+    plt.savefig(save_path)
+    print(f"\n>>> Simulation complete! Results saved to: {save_path} <<<")
 
 if __name__ == "__main__":
-    run_benchmark()
+    run_3way_topology_benchmark()

@@ -30,10 +30,16 @@ class SimulationEngine:
         self.active_packets = {}
 
     def generate_traffic(self):
-        from algorithms.node import DataPacket
-        prob = (self.data_rate * len(self.wban_nodes)) * self.time_step
-        prob = self.data_rate * self.time_step
-        if random.random() < prob:
+        # Calculate exactly how many packets should spawn this exact millisecond
+        expected_packets = (self.data_rate * len(self.wban_nodes)) * self.time_step
+        num_packets = int(expected_packets) # Guaranteed packets
+        
+        # Fractional chance to spawn one extra packet
+        if random.random() < (expected_packets - num_packets):
+            num_packets += 1
+            
+        # Spawn the correct volume of traffic!
+        for _ in range(num_packets):
             self.generated_packets += 1
             src = random.choice(self.wban_nodes)
             snk = random.choice(self.sinks)
@@ -66,15 +72,18 @@ class SimulationEngine:
                     if not candidates: continue
                     
                     nxt = self.agent.select_best_route(node_id, candidates, self.sinks)
+                    if not nxt: continue # Failsafe for PlainQ
+                    
                     self.active_packets[pkt.packet_id]['hops'] += 1
                     
-                    node.energy -= 1.055 # Tx/Rx energy
+                    # Energy Tracking
+                    node.energy -= 1.055 # Tx/Rx energy 
+                    self.energy_consumed += 1.055 
                     
-                    # NEW: Simulate MAC layer collisions. Heavier load = higher drop chance
+                    # Simulate MAC layer collisions. Heavier load = higher drop chance
                     collision_chance = min(0.6, node.avg_traffic_load * 0.15)
                     
                     if random.random() > collision_chance:
-                        # SUCCESSFUL HOP
                         node.record_transmission(success=True)
                         self.env.nodes[nxt].pkt_in += 1
                         
@@ -85,9 +94,7 @@ class SimulationEngine:
                         else:
                             self.env.nodes[nxt].scheduler.enqueue_packet(pkt)
                     else:
-                        # PACKET DROPPED DUE TO INTERFERENCE!
                         node.record_transmission(success=False)
-                        # Packet is lost, it does not get enqueued to the next node.
                         
             self.current_time += self.time_step
             
