@@ -7,12 +7,13 @@ import os
 
 from algorithms.network import NetworkEnv
 from experiments.simulation_engine import SimulationEngine
-from algorithms.q_learning import QLearningAgent # 2-Hop QQAR
-from algorithms.one_hop_qqar import OneHopQQARAgent # 1-Hop QQAR
-from algorithms.plain_q_learning import PlainQLearningAgent # Naive 1-Hop
+from algorithms.q_learning import QLearningAgent 
+from algorithms.one_hop_qqar import OneHopQQARAgent 
+from algorithms.plain_q_learning import PlainQLearningAgent 
 
 def run_3way_reproducible_benchmark():
-    NUM_RUNS = 3 # Average over 3 reproducible topologies
+    # OPTIMIZATIONS FOR SPEED
+    NUM_RUNS = 1 
     node_counts = [200, 400, 600, 800, 1000]
     agents_list = ['QQAR (2-Hop)', 'QQAR (1-Hop)', 'Plain Q (1-Hop)']
     
@@ -20,16 +21,14 @@ def run_3way_reproducible_benchmark():
     
     for num_nodes in node_counts:
         print(f"\n{'='*50}")
-        print(f" Benchmarking {num_nodes} WBAN Nodes (Averaging {NUM_RUNS} runs)")
+        print(f" FAST BENCHMARK: {num_nodes} WBAN Nodes")
         print(f"{'='*50}")
         
         runs_data = {agent: {'pdr': [], 'delay': [], 'ro': [], 'energy': []} for agent in agents_list}
         
         for run in range(NUM_RUNS):
-            # 1. FORCE REPRODUCIBILITY
             random.seed(42 + run)
             
-            # 2. Build identical physical layer for all agents
             env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
             env.deploy_nodes()
             num_sinks = max(10, int(num_nodes * 0.05))
@@ -40,17 +39,16 @@ def run_3way_reproducible_benchmark():
                 node.broadcast_hello(1.0)
             ro_base = num_nodes * 40
             
-            # 3. Agent Execution Dictionary
             agent_instances = {
-                'QQAR (2-Hop)': QLearningAgent(env, max_episodes=2000),
-                'QQAR (1-Hop)': OneHopQQARAgent(env, max_episodes=2000),
-                'Plain Q (1-Hop)': PlainQLearningAgent(env, max_episodes=2000)
+                'QQAR (2-Hop)': QLearningAgent(env, max_episodes=1000), # Cut training time in half
+                'QQAR (1-Hop)': OneHopQQARAgent(env, max_episodes=1000),
+                'Plain Q (1-Hop)': PlainQLearningAgent(env, max_episodes=1000)
             }
             
             for agent_name, agent in agent_instances.items():
                 agent.train(sinks)
-                # Traffic load simulated per network scale
-                engine = SimulationEngine(env, agent, sinks, wban_nodes, data_rate=5, max_time=150.0)
+                # Max time back to 15.0 seconds
+                engine = SimulationEngine(env, agent, sinks, wban_nodes, data_rate=5, max_time=15.0)
                 pdr, delay, hops, energy = engine.run()
                 
                 runs_data[agent_name]['pdr'].append(pdr)
@@ -58,7 +56,6 @@ def run_3way_reproducible_benchmark():
                 runs_data[agent_name]['ro'].append(ro_base + (agent.max_episodes * 15 if 'QQAR' in agent_name else 10))
                 runs_data[agent_name]['energy'].append(energy)
 
-        # 4. Average Results
         for agent_name in agents_list:
             final_results[agent_name]['pdr'].append(np.mean(runs_data[agent_name]['pdr']))
             final_results[agent_name]['delay'].append(np.mean(runs_data[agent_name]['delay']))
@@ -67,7 +64,7 @@ def run_3way_reproducible_benchmark():
 
     # --- Plotting the 3-Way Comparison ---
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle(f'Protocol Performance Comparison (Averaged over {NUM_RUNS} runs)', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Protocol Performance Comparison', fontsize=16, fontweight='bold')
 
     colors = {'QQAR (2-Hop)': 'navy', 'QQAR (1-Hop)': 'forestgreen', 'Plain Q (1-Hop)': 'darkorange'}
     markers = {'QQAR (2-Hop)': 'd', 'QQAR (1-Hop)': '^', 'Plain Q (1-Hop)': 's'}
@@ -90,7 +87,7 @@ def run_3way_reproducible_benchmark():
     axs[1, 0].set(title='(c) Routing Overhead vs WBANs', xlabel='Number of WBANs', ylabel='RO (Bytes)')
     axs[1, 0].legend()
 
-    # Energy Consumption (Grouped Bar Chart)
+    # Energy Consumption 
     x = np.arange(len(node_counts))
     width = 0.25
     axs[1, 1].bar(x - width, final_results['QQAR (2-Hop)']['energy'], width, label='QQAR (2-Hop)', color=colors['QQAR (2-Hop)'], edgecolor='black')
