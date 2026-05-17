@@ -1,11 +1,14 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import networkx as nx
+import os
+import random
 from algorithms.network import NetworkEnv
 
 def visualize_logical_topology(target_id=0):
     print("Initializing network and running discovery...")
+    random.seed(42)
     # 1. Initialize and build physical environment
     env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
     env.deploy_nodes()
@@ -51,9 +54,9 @@ def visualize_logical_topology(target_id=0):
     # Draw paths from 1-hop neighbors to 2-hop neighbors to show *how* they were discovered
     two_hop_edges = []
     for n2 in two_hop_nodes:
-        for n1 in one_hop_nodes:
-            if env.graph.has_edge(n1, n2):  # If they are physically connected
-                two_hop_edges.append((n1, n2))
+        relay_id = target_node.neighbor_list[n2].get('relay')
+        if relay_id is not None and env.graph.has_edge(relay_id, n2):
+            two_hop_edges.append((relay_id, n2))
                 
     nx.draw_networkx_edges(env.graph, positions, edgelist=two_hop_edges, alpha=0.6, edge_color='orange', width=1.5)
     
@@ -77,8 +80,11 @@ def visualize_logical_topology(target_id=0):
     plt.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
     plt.legend(scatterpoints=1, loc='upper right')
 
-    print("Displaying plot. Close the window to exit.")
-    plt.show()
+    save_dir = 'results/figures'
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f'discovery_node_{target_id}.png')
+    plt.savefig(save_path, dpi=300)
+    print(f"Plot saved to {save_path}")
 
 if __name__ == "__main__":
     # You can change the target_id to view the network from the perspective of any other node

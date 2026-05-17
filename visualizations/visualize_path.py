@@ -6,9 +6,11 @@ import random
 import os
 from algorithms.network import NetworkEnv
 from algorithms.q_learning import QLearningAgent
+from algorithms.paper_config import LABEL_QQAR_2HOP, MAX_EPISODES
 
 def visualize_q_learning_path():
     print("1. Initializing network...")
+    random.seed(42)
     env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
     env.deploy_nodes()
 
@@ -19,40 +21,53 @@ def visualize_q_learning_path():
     for node_id, node in env.nodes.items():
         node.broadcast_hello(1.0)
 
-    print(f"3. Training Q-Learning Agent with Sinks: {sinks}...")
-    agent = QLearningAgent(env, alpha=0.5, gamma=0.9, max_episodes=5000)
+    print(f"3. Training {LABEL_QQAR_2HOP} with sinks: {sinks}...")
+    agent = QLearningAgent(env, max_episodes=MAX_EPISODES)
     agent.train(sinks)
 
     print("4. Tracing optimal path from a random WBAN node...")
     start_id = random.choice(wban_nodes)
+    sink_id = random.choice(sinks)
     path_nodes = [start_id]
     current_id = start_id
     visited = set([start_id])
 
-    while current_id not in sinks:
+    while current_id != sink_id:
         node = env.nodes[current_id]
         if not hasattr(node, 'q_table') or not node.q_table:
             print(f"ERROR: Path broke at node {current_id} (No Q-table).")
             break
 
-        current_dist = agent.get_distance_to_closest_sink(current_id, sinks)
+        current_dist = env.get_distance(current_id, sink_id)
         candidates = [n for n in node.neighbor_list.keys() 
-                      if current_dist > agent.get_distance_to_closest_sink(n, sinks)]
+                      if (n not in sinks or n == sink_id)
+                      and current_dist > env.get_distance(n, sink_id)]
 
         if not candidates:
             print(f"ERROR: Path trapped at local minimum at node {current_id}.")
             break
 
-        next_hop = agent.select_best_route(current_id, candidates, sinks)
-        if next_hop in visited:
-            print(f"ERROR: Routing loop detected at node {next_hop}!")
+        selected_next = agent.select_best_route(current_id, candidates, [sink_id])
+        route_hops = agent._route_hops(current_id, selected_next)
+        if not route_hops:
+            print(f"ERROR: No physical route from node {current_id} to selected node {selected_next}.")
             break
 
-        path_nodes.append(next_hop)
-        visited.add(next_hop)
-        current_id = next_hop
+        loop_detected = False
+        for next_hop in route_hops:
+            if next_hop in visited:
+                print(f"ERROR: Routing loop detected at node {next_hop}!")
+                loop_detected = True
+                break
+            path_nodes.append(next_hop)
+            visited.add(next_hop)
+            current_id = next_hop
+            if current_id == sink_id:
+                break
+        if loop_detected:
+            break
 
-    print(f"\nSUCCESS: Data Packet Path: {path_nodes}")
+    print(f"\nData Packet Path to Sink {sink_id}: {path_nodes}")
     print(f"Total Hops: {len(path_nodes) - 1}")
 
     # --- Plotting ---
@@ -70,7 +85,7 @@ def visualize_q_learning_path():
         nx.draw_networkx_edges(env.graph, positions, edgelist=path_edges, edge_color='red', width=2.0)
         nx.draw_networkx_nodes(env.graph, positions, nodelist=[start_id], node_size=150, node_color='limegreen', node_shape='^', label=f'Source (Node {start_id})')
 
-    plt.title("Multi-Sink Q-Learning Routing Path Verification", fontsize=14, fontweight='bold')
+    plt.title("Packet-Specific QQAR Physical Path Verification", fontsize=14, fontweight='bold')
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend(loc='upper right')
     

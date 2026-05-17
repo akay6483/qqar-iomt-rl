@@ -1,14 +1,14 @@
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-matplotlib.use('TkAgg')
-
 import networkx as nx
-from algorithms.network import NetworkEnv
-import networkx as nx
+import os
+import random
 from algorithms.network import NetworkEnv
 
 def visualize_topology():
     print("Initializing network for visualization...")
+    random.seed(42)
     # Initialize the same environment you used in main.py
     env = NetworkEnv(area_size=500, num_nodes=200, tx_range=50)
     env.deploy_nodes()
@@ -42,8 +42,11 @@ def visualize_topology():
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
 
-    print("Displaying plot. Close the window to exit.")
-    plt.show()
+    save_dir = 'results/figures'
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, 'network_topology.png')
+    plt.savefig(save_path, dpi=300)
+    print(f"Plot saved to {save_path}")
 
 if __name__ == "__main__":
     visualize_topology()
