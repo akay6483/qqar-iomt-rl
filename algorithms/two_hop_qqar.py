@@ -10,15 +10,17 @@ from algorithms.paper_config import (
     PRIORITY_PROFILE,
     Q_UPDATE_PACKET_BYTES_QQAR,
     TRAFFIC_LOAD_THRESHOLD,
-    LABEL_QQAR_1HOP,
+    LABEL_QQAR_2HOP,
 )
 
-class OneHopQQARAgent:
+class QLearningAgent:
     def __init__(self, network_env, alpha=ALPHA, gamma=GAMMA, max_episodes=MAX_EPISODES):
         self.env = network_env
         self.alpha = alpha               
         self.gamma = gamma               
         self.max_episodes = max_episodes 
+        
+        # Reward weights (A, B, C, D must sum to 1.0)
         self.weights = {'A': 0.25, 'B': 0.25, 'C': 0.25, 'D': 0.25}
         self.routing_overhead_bytes = 0
         self.training_energy_consumed = 0.0
@@ -26,13 +28,15 @@ class OneHopQQARAgent:
 
     def get_q_value(self, state_id, action_id):
         node = self.env.nodes[state_id]
-        if not hasattr(node, 'one_hop_q_table'): node.one_hop_q_table = {}
-        return node.one_hop_q_table.get(action_id, 0.0)
+        if not hasattr(node, 'q_table'):
+            node.q_table = {}
+        return node.q_table.get(action_id, 0.0)
 
     def set_q_value(self, state_id, action_id, value):
         node = self.env.nodes[state_id]
-        if not hasattr(node, 'one_hop_q_table'): node.one_hop_q_table = {}
-        node.one_hop_q_table[action_id] = value
+        if not hasattr(node, 'q_table'):
+            node.q_table = {}
+        node.q_table[action_id] = value
 
     def get_distance_to_closest_sink(self, node_id, sinks):
         return min([self.env.get_distance(node_id, s) for s in sinks])
@@ -96,6 +100,23 @@ class OneHopQQARAgent:
         failure_probability = min(0.85, congestion + weak_link * 0.25 + low_energy)
         return random.random() > failure_probability
 
+    def _route_hops(self, current_id, selected_next):
+        neighbor_info = self.env.nodes[current_id].neighbor_list.get(selected_next)
+        if not neighbor_info:
+            return []
+
+        if neighbor_info['hops'] == 1:
+            return [selected_next]
+
+        relay_id = neighbor_info.get('relay')
+        if relay_id is None:
+            return []
+        if not self.env.graph.has_edge(current_id, relay_id):
+            return []
+        if not self.env.graph.has_edge(relay_id, selected_next):
+            return []
+        return [relay_id, selected_next]
+
     def _apply_training_transition(self, current_id, next_hop_id, success):
         current_node = self.env.nodes[current_id]
         next_node = self.env.nodes[next_hop_id]
@@ -115,16 +136,38 @@ class OneHopQQARAgent:
         current_node.e2e_delay = current_node.get_dynamic_delay() + current_node.avg_traffic_load * 0.05
         next_node.e2e_delay = next_node.get_dynamic_delay() + next_node.avg_traffic_load * 0.05
 
+    def _apply_training_route(self, current_id, selected_next):
+        route_hops = self._route_hops(current_id, selected_next)
+        if not route_hops:
+            return False
+
+        transmitter_id = current_id
+        for hop_id in route_hops:
+            success = self._transmission_succeeds(transmitter_id, hop_id)
+            self._apply_training_transition(transmitter_id, hop_id, success)
+            if not success:
+                return False
+            transmitter_id = hop_id
+        return True
+
     def train(self, sinks):
-        print(f"Training {LABEL_QQAR_1HOP}: sinks={len(sinks)}, episodes={self.max_episodes}")
+        """
+        Decentralized training: Spawns random packets from random nodes 
+        to naturally build Q-tables across the entire network.
+        """
+        print(f"Training {LABEL_QQAR_2HOP}: sinks={len(sinks)}, episodes={self.max_episodes}")
         self.training_energy_consumed = 0.0
         self.training_energy_history = []
+        
+        # Get list of all WBAN nodes (excluding sinks)
         wban_nodes = [n for n in self.env.nodes.keys() if n not in sinks]
         
         for episode in range(self.max_episodes):
+            # Pick a random source node for this episode
             current_id = random.choice(wban_nodes)
             pkt = self._sample_training_packet(episode + 1, current_id, sinks)
             steps = 0
+            
             epsilon = max(0.1, 1.0 - episode / (self.max_episodes * 0.5))
             
             while current_id not in sinks and steps < MAX_TRAINING_STEPS:
@@ -132,15 +175,14 @@ class OneHopQQARAgent:
                 current_dist = min([self.env.get_distance(current_id, s) for s in sinks])
                 
                 candidates = [n_id for n_id, data in current_node.neighbor_list.items() 
-                              if data['hops'] == 1
-                              and current_dist > min([self.env.get_distance(n_id, s) for s in sinks])]
+                              if current_dist > min([self.env.get_distance(n_id, s) for s in sinks])]
                               
                 if not candidates: break
                     
                 if random.random() < epsilon: action_id = random.choice(candidates)
                 else: action_id = max(candidates, key=lambda a: self.get_q_value(current_id, a))
                     
-                success = self._transmission_succeeds(current_id, action_id)
+                success = self._apply_training_route(current_id, action_id)
                 
                 reward = self.calculate_reward(current_id, action_id, sinks, candidates, pkt)
                 if not success: reward = -100.0
@@ -150,33 +192,36 @@ class OneHopQQARAgent:
                     next_node = self.env.nodes[action_id]
                     next_dist = min([self.env.get_distance(action_id, s) for s in sinks])
                     next_candidates = [n for n, data in next_node.neighbor_list.items() 
-                                       if data['hops'] == 1
-                                       and next_dist > min([self.env.get_distance(n, s) for s in sinks])]
+                                       if next_dist > min([self.env.get_distance(n, s) for s in sinks])]
                     max_next_q = max([self.get_q_value(action_id, a) for a in next_candidates]) if next_candidates else 0.0
                     
                 old_q = self.get_q_value(current_id, action_id)
                 new_q = old_q + self.alpha * (reward + self.gamma * max_next_q - old_q)
                 self.set_q_value(current_id, action_id, new_q)
                 self._record_q_update_overhead(current_id, action_id)
-                self._apply_training_transition(current_id, action_id, success)
-                
+
                 if not success:
                     break
                 current_id = action_id
                 steps += 1
+
             self.training_energy_history.append(self.training_energy_consumed)
-        print(f"Finished {LABEL_QQAR_1HOP}.")
+                
+        print(f"Finished {LABEL_QQAR_2HOP}.")
 
     def select_best_route(self, current_id, candidates, sinks):
-        # Filter physical candidates to 1-hop only
-        one_hop_cands = [c for c in candidates if self.env.nodes[current_id].neighbor_list[c]['hops'] == 1]
-        if not one_hop_cands: return None
-        
-        sorted_candidates = sorted(one_hop_cands, key=lambda c: self.get_q_value(current_id, c), reverse=True)
+        """
+        Algorithm 4 (Lines 26-28): Fallback congestion control.
+        """
+        sorted_candidates = sorted(candidates, key=lambda c: self.get_q_value(current_id, c), reverse=True)
         best_candidate = sorted_candidates[0]
         best_node = self.env.nodes[best_candidate]
+        
+        # Assume nodes have a traffic load tracker. Fallback if overloaded or dying.
+        # L_th is 0.5 as defined in the paper.
         traffic_load = getattr(best_node, 'avg_traffic_load', 0.0)
         
         if (traffic_load > TRAFFIC_LOAD_THRESHOLD or best_node.energy < LOW_ENERGY_THRESHOLD_J) and len(sorted_candidates) > 1:
-            return sorted_candidates[1] 
+            return sorted_candidates[1] # Use the alternative path
+            
         return best_candidate

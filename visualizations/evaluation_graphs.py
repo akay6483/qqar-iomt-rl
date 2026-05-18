@@ -7,9 +7,9 @@ import os
 
 from algorithms.network import NetworkEnv
 from experiment.simulation_engine import SimulationEngine
-from algorithms.two_hop_qqar import QLearningAgent 
-from algorithms.one_hop_qqar import OneHopQQARAgent 
-from algorithms.plain_q_learning import PlainQLearningAgent 
+from algorithms.two_hop_qqar import QLearningAgent
+from algorithms.one_hop_qqar import OneHopQQARAgent
+from algorithms.plain_q_learning import PlainQLearningAgent
 from algorithms.paper_config import (
     AGENT_LABELS,
     LABEL_BASELINE_Q,
@@ -18,21 +18,21 @@ from algorithms.paper_config import (
     MAX_EPISODES,
 )
 
-def run_3way_reproducible_benchmark():
+def run_3way_topology_benchmark():
     NUM_RUNS = 10
     node_counts = [200, 400, 600, 800, 1000]
     agents_list = list(AGENT_LABELS)
     base_seed = 42
     
-    final_results = {agent: {'pdr': [], 'delay': [], 'ro': [], 'energy': []} for agent in agents_list}
-    final_std = {agent: {'pdr': [], 'delay': [], 'ro': [], 'energy': []} for agent in agents_list}
+    final_results = {agent: {metric: [] for metric in ['pdr', 'delay', 'hops', 'energy']} for agent in agents_list}
+    final_std = {agent: {metric: [] for metric in ['pdr', 'delay', 'hops', 'energy']} for agent in agents_list}
     
     for num_nodes in node_counts:
         print(f"\n{'='*50}")
-        print(f" Routing algorithm comparison: {num_nodes} WBAN nodes")
+        print(f" Routing algorithm comparison topology: {num_nodes} WBAN nodes")
         print(f"{'='*50}")
         
-        runs_data = {agent: {'pdr': [], 'delay': [], 'ro': [], 'energy': []} for agent in agents_list}
+        runs_data = {agent: {'pdr': [], 'delay': [], 'hops': [], 'energy': []} for agent in agents_list}
         
         for run in range(NUM_RUNS):
             run_seed = base_seed + run
@@ -40,8 +40,7 @@ def run_3way_reproducible_benchmark():
             random.seed(run_seed)
             base_env = NetworkEnv(area_size=500, num_nodes=num_nodes, tx_range=50)
             base_env.deploy_nodes()
-            num_sinks = max(10, int(num_nodes * 0.05))
-            sinks = random.sample(range(num_nodes), num_sinks)
+            sinks = random.sample(range(num_nodes), max(10, int(num_nodes * 0.05)))
             wban_nodes = [n for n in range(num_nodes) if n not in sinks]
 
             agent_factories = {
@@ -54,7 +53,6 @@ def run_3way_reproducible_benchmark():
                 env = base_env.clone_topology()
                 for node_id, node in env.nodes.items():
                     node.broadcast_hello(1.0)
-                discovery_ro = env.routing_overhead_bytes
                 discovery_energy = env.control_energy_consumed
 
                 random.seed((run_seed * 1000) + agent_index)
@@ -75,17 +73,18 @@ def run_3way_reproducible_benchmark():
                 
                 runs_data[agent_name]['pdr'].append(pdr)
                 runs_data[agent_name]['delay'].append(delay)
-                runs_data[agent_name]['ro'].append(discovery_ro + agent.routing_overhead_bytes + engine.routing_overhead_bytes)
+                runs_data[agent_name]['hops'].append(hops)
                 runs_data[agent_name]['energy'].append(discovery_energy + agent.training_energy_consumed + energy)
 
-        for agent_name in agents_list:
-            for metric in ['pdr', 'delay', 'ro', 'energy']:
-                final_results[agent_name][metric].append(np.mean(runs_data[agent_name][metric]))
-                final_std[agent_name][metric].append(np.std(runs_data[agent_name][metric]))
+        # Average Results
+        for agent in agents_list:
+            for metric in ['pdr', 'delay', 'hops', 'energy']:
+                final_results[agent][metric].append(np.mean(runs_data[agent][metric]))
+                final_std[agent][metric].append(np.std(runs_data[agent][metric]))
 
-    # --- Plotting the 3-Way Comparison ---
+    # --- Plotting ---
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Routing Algorithm Performance Comparison', fontsize=16, fontweight='bold')
+    fig.suptitle('Comprehensive Routing Algorithm Topology Evaluation', fontsize=16, fontweight='bold')
 
     colors = {LABEL_QQAR_2HOP: 'navy', LABEL_QQAR_1HOP: 'forestgreen', LABEL_BASELINE_Q: 'darkorange'}
     markers = {LABEL_QQAR_2HOP: 'd', LABEL_QQAR_1HOP: '^', LABEL_BASELINE_Q: 's'}
@@ -93,7 +92,7 @@ def run_3way_reproducible_benchmark():
     # PDR
     for agent in agents_list:
         axs[0, 0].errorbar(node_counts, final_results[agent]['pdr'], yerr=final_std[agent]['pdr'], marker=markers[agent], color=colors[agent], label=agent, linewidth=2, capsize=3)
-    axs[0, 0].set(title='(a) Packet Delivery Ratio vs WBANs', xlabel='Number of WBANs', ylabel='PDR (%)')
+    axs[0, 0].set(title='(a) PDR vs WBANs', xlabel='Number of WBANs', ylabel='PDR (%)')
     axs[0, 0].legend()
 
     # Delay
@@ -102,15 +101,18 @@ def run_3way_reproducible_benchmark():
     axs[0, 1].set(title='(b) Average E2E Delay vs WBANs', xlabel='Number of WBANs', ylabel='Delay (ms)')
     axs[0, 1].legend()
 
-    # Routing Overhead
-    for agent in agents_list:
-        axs[1, 0].errorbar(node_counts, final_results[agent]['ro'], yerr=final_std[agent]['ro'], marker=markers[agent], color=colors[agent], label=agent, linewidth=2, capsize=3)
-    axs[1, 0].set(title='(c) Routing Overhead vs WBANs', xlabel='Number of WBANs', ylabel='RO (Bytes)')
-    axs[1, 0].legend()
-
-    # Energy Consumption 
+    # Hop Count
     x = np.arange(len(node_counts))
     width = 0.25
+    axs[1, 0].bar(x - width, final_results[LABEL_QQAR_2HOP]['hops'], width, yerr=final_std[LABEL_QQAR_2HOP]['hops'], capsize=3, label=LABEL_QQAR_2HOP, color=colors[LABEL_QQAR_2HOP], edgecolor='black')
+    axs[1, 0].bar(x, final_results[LABEL_QQAR_1HOP]['hops'], width, yerr=final_std[LABEL_QQAR_1HOP]['hops'], capsize=3, label=LABEL_QQAR_1HOP, color=colors[LABEL_QQAR_1HOP], edgecolor='black')
+    axs[1, 0].bar(x + width, final_results[LABEL_BASELINE_Q]['hops'], width, yerr=final_std[LABEL_BASELINE_Q]['hops'], capsize=3, label=LABEL_BASELINE_Q, color=colors[LABEL_BASELINE_Q], edgecolor='black')
+    axs[1, 0].set(title='(c) Average Hop Count', xlabel='Number of WBANs', ylabel='Hop Count')
+    axs[1, 0].set_xticks(x)
+    axs[1, 0].set_xticklabels(node_counts)
+    axs[1, 0].legend()
+
+    # Energy
     axs[1, 1].bar(x - width, final_results[LABEL_QQAR_2HOP]['energy'], width, yerr=final_std[LABEL_QQAR_2HOP]['energy'], capsize=3, label=LABEL_QQAR_2HOP, color=colors[LABEL_QQAR_2HOP], edgecolor='black')
     axs[1, 1].bar(x, final_results[LABEL_QQAR_1HOP]['energy'], width, yerr=final_std[LABEL_QQAR_1HOP]['energy'], capsize=3, label=LABEL_QQAR_1HOP, color=colors[LABEL_QQAR_1HOP], edgecolor='black')
     axs[1, 1].bar(x + width, final_results[LABEL_BASELINE_Q]['energy'], width, yerr=final_std[LABEL_BASELINE_Q]['energy'], capsize=3, label=LABEL_BASELINE_Q, color=colors[LABEL_BASELINE_Q], edgecolor='black')
@@ -119,16 +121,14 @@ def run_3way_reproducible_benchmark():
     axs[1, 1].set_xticklabels(node_counts)
     axs[1, 1].legend()
 
-    for ax in axs.flat: 
-        ax.grid(True, linestyle='--', alpha=0.6)
-        
+    for ax in axs.flat: ax.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     save_dir = 'results/figures'
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, 'algorithm_3way_comparison.png')
+    save_path = os.path.join(save_dir, 'evaluation_topology_graphs.png')
     plt.savefig(save_path)
     print(f"\nSaved results to: {save_path}")
 
 if __name__ == "__main__":
-    run_3way_reproducible_benchmark()
+    run_3way_topology_benchmark()

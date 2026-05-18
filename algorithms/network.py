@@ -11,6 +11,32 @@ class NetworkEnv:
         
         self.nodes = {} # Dictionary mapping node_id -> Node object
         self.graph = nx.Graph() # The physical radio-frequency graph
+        self.routing_overhead_bytes = 0
+        self.control_energy_consumed = 0.0
+
+    def record_control_packet(self, size_bytes, sender_id=None, receiver_ids=None):
+        self.routing_overhead_bytes += size_bytes
+        if sender_id is not None:
+            self.control_energy_consumed += self.nodes[sender_id].consume_tx_energy(size_bytes)
+        for receiver_id in receiver_ids or []:
+            self.control_energy_consumed += self.nodes[receiver_id].consume_rx_energy(size_bytes)
+
+    def reset_routing_overhead(self):
+        self.routing_overhead_bytes = 0
+        self.control_energy_consumed = 0.0
+
+    def clone_topology(self):
+        """
+        Build a fresh environment with the same node positions and physical links.
+        Dynamic routing tables, queues, energy, and Q-tables are intentionally reset.
+        """
+        clone = NetworkEnv(self.area_size, self.num_nodes, self.tx_range)
+        clone.graph = self.graph.copy()
+        for node_id in self.graph.nodes:
+            node = Node(node_id=node_id)
+            node.network_env = clone
+            clone.nodes[node_id] = node
+        return clone
 
     def deploy_nodes(self):
         """
@@ -50,6 +76,11 @@ class NetworkEnv:
         Only nodes directly connected in the physical graph will receive the packet.
         """
         physical_neighbors = list(self.graph.neighbors(sender_node.node_id))
+        self.record_control_packet(
+            size_bytes=packet_size(packet),
+            sender_id=sender_node.node_id,
+            receiver_ids=physical_neighbors,
+        )
         
         for neighbor_id in physical_neighbors:
             receiving_node = self.nodes[neighbor_id]
@@ -61,3 +92,9 @@ class NetworkEnv:
         pos_b = self.graph.nodes[node_b_id]['pos']
         import math
         return math.hypot(pos_a[0] - pos_b[0], pos_a[1] - pos_b[1])
+
+
+def packet_size(packet):
+    from algorithms.paper_config import HELLO_PACKET_BYTES
+
+    return HELLO_PACKET_BYTES
