@@ -5,7 +5,7 @@ import networkx as nx
 import random
 import os
 from algorithms.network import NetworkEnv
-from algorithms.q_learning import QLearningAgent
+from algorithms.two_hop_qqar import QLearningAgent
 from algorithms.paper_config import LABEL_QQAR_2HOP, MAX_EPISODES
 
 def visualize_q_learning_path():
@@ -27,27 +27,25 @@ def visualize_q_learning_path():
 
     print("4. Tracing optimal path from a random WBAN node...")
     start_id = random.choice(wban_nodes)
-    sink_id = random.choice(sinks)
     path_nodes = [start_id]
     current_id = start_id
     visited = set([start_id])
 
-    while current_id != sink_id:
+    while current_id not in sinks:
         node = env.nodes[current_id]
         if not hasattr(node, 'q_table') or not node.q_table:
             print(f"ERROR: Path broke at node {current_id} (No Q-table).")
             break
 
-        current_dist = env.get_distance(current_id, sink_id)
+        current_dist = min([env.get_distance(current_id, s) for s in sinks])
         candidates = [n for n in node.neighbor_list.keys() 
-                      if (n not in sinks or n == sink_id)
-                      and current_dist > env.get_distance(n, sink_id)]
+                      if current_dist > min([env.get_distance(n, s) for s in sinks])]
 
         if not candidates:
             print(f"ERROR: Path trapped at local minimum at node {current_id}.")
             break
 
-        selected_next = agent.select_best_route(current_id, candidates, [sink_id])
+        selected_next = agent.select_best_route(current_id, candidates, sinks)
         route_hops = agent._route_hops(current_id, selected_next)
         if not route_hops:
             print(f"ERROR: No physical route from node {current_id} to selected node {selected_next}.")
@@ -62,12 +60,13 @@ def visualize_q_learning_path():
             path_nodes.append(next_hop)
             visited.add(next_hop)
             current_id = next_hop
-            if current_id == sink_id:
+            if current_id in sinks:
                 break
         if loop_detected:
             break
 
-    print(f"\nData Packet Path to Sink {sink_id}: {path_nodes}")
+    delivered_sink = current_id if current_id in sinks else None
+    print(f"\nAnycast data packet path to sink {delivered_sink}: {path_nodes}")
     print(f"Total Hops: {len(path_nodes) - 1}")
 
     # --- Plotting ---

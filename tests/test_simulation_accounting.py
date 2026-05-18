@@ -3,7 +3,7 @@ import unittest
 from algorithms.network import NetworkEnv
 from algorithms.node import DataPacket, Node
 from algorithms.paper_config import HELLO_PACKET_BYTES
-from experiments.simulation_engine import SimulationEngine
+from experiment.simulation_engine import SimulationEngine
 
 
 class FirstCandidateAgent:

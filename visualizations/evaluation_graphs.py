@@ -6,8 +6,8 @@ import numpy as np
 import os
 
 from algorithms.network import NetworkEnv
-from experiments.simulation_engine import SimulationEngine
-from algorithms.q_learning import QLearningAgent
+from experiment.simulation_engine import SimulationEngine
+from algorithms.two_hop_qqar import QLearningAgent
 from algorithms.one_hop_qqar import OneHopQQARAgent
 from algorithms.plain_q_learning import PlainQLearningAgent
 from algorithms.paper_config import (
@@ -29,7 +29,7 @@ def run_3way_topology_benchmark():
     
     for num_nodes in node_counts:
         print(f"\n{'='*50}")
-        print(f" QQAR ABLATION TOPOLOGY: {num_nodes} WBAN Nodes")
+        print(f" Routing algorithm comparison topology: {num_nodes} WBAN nodes")
         print(f"{'='*50}")
         
         runs_data = {agent: {'pdr': [], 'delay': [], 'hops': [], 'energy': []} for agent in agents_list}
@@ -84,7 +84,7 @@ def run_3way_topology_benchmark():
 
     # --- Plotting ---
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Comprehensive QQAR Ablation Topology Evaluation', fontsize=16, fontweight='bold')
+    fig.suptitle('Comprehensive Routing Algorithm Topology Evaluation', fontsize=16, fontweight='bold')
 
     colors = {LABEL_QQAR_2HOP: 'navy', LABEL_QQAR_1HOP: 'forestgreen', LABEL_BASELINE_Q: 'darkorange'}
     markers = {LABEL_QQAR_2HOP: 'd', LABEL_QQAR_1HOP: '^', LABEL_BASELINE_Q: 's'}
@@ -128,7 +128,7 @@ def run_3way_topology_benchmark():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, 'evaluation_topology_graphs.png')
     plt.savefig(save_path)
-    print(f"\n>>> Simulation complete! Results saved to: {save_path} <<<")
+    print(f"\nSaved results to: {save_path}")
 
 if __name__ == "__main__":
     run_3way_topology_benchmark()

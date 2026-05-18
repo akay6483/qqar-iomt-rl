@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import random
 import os
 from algorithms.network import NetworkEnv
-from algorithms.q_learning import QLearningAgent
+from algorithms.two_hop_qqar import QLearningAgent
 from algorithms.paper_config import MAX_EPISODES, MAX_TRAINING_STEPS
 
 def plot_convergence():
@@ -29,12 +29,11 @@ def plot_convergence():
         episode_reward = 0
         epsilon = max(0.1, 1.0 - episode / (agent.max_episodes * 0.5))
         
-        while current_id != pkt.sink_id and steps < MAX_TRAINING_STEPS:
+        while current_id not in sinks and steps < MAX_TRAINING_STEPS:
             current_node = env.nodes[current_id]
-            current_dist = env.get_distance(current_id, pkt.sink_id)
+            current_dist = min([env.get_distance(current_id, s) for s in sinks])
             candidates = [n for n in current_node.neighbor_list.keys() 
-                          if (n not in sinks or n == pkt.sink_id)
-                          and current_dist > env.get_distance(n, pkt.sink_id)]
+                          if current_dist > min([env.get_distance(n, s) for s in sinks])]
                           
             if not candidates:
                 episode_reward -= 100 # Penalty for dead end
@@ -46,19 +45,18 @@ def plot_convergence():
                 action_id = max(candidates, key=lambda a: agent.get_q_value(current_id, a))
                 
             success = agent._apply_training_route(current_id, action_id)
-            reward = agent.calculate_reward(current_id, action_id, pkt.sink_id, candidates, pkt)
+            reward = agent.calculate_reward(current_id, action_id, sinks, candidates, pkt)
             if not success:
                 reward = -100.0
             episode_reward += reward
             
-            if action_id == pkt.sink_id:
+            if action_id in sinks:
                 max_next_q = 0.0
             else:
                 next_node = env.nodes[action_id]
-                next_dist = env.get_distance(action_id, pkt.sink_id)
+                next_dist = min([env.get_distance(action_id, s) for s in sinks])
                 next_candidates = [n for n in next_node.neighbor_list.keys() 
-                                   if (n not in sinks or n == pkt.sink_id)
-                                   and next_dist > env.get_distance(n, pkt.sink_id)]
+                                   if next_dist > min([env.get_distance(n, s) for s in sinks])]
                 max_next_q = max([agent.get_q_value(action_id, a) for a in next_candidates]) if next_candidates else 0.0
                 
             old_q = agent.get_q_value(current_id, action_id)

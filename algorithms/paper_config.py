@@ -29,9 +29,9 @@ PRIORITY_PROFILE = (
 
 TRAFFIC_LOAD_THRESHOLD = 0.5
 
-LABEL_QQAR_2HOP = "Proposed QQAR (2-hop)"
-LABEL_QQAR_1HOP = "QQAR ablation (1-hop)"
-LABEL_BASELINE_Q = "Baseline Q-learning (1-hop)"
+LABEL_QQAR_2HOP = "QQAR paper algorithm (2-hop discovery)"
+LABEL_QQAR_1HOP = "QQAR with 1-hop discovery"
+LABEL_BASELINE_Q = "Plain Q-learning baseline (1-hop)"
 
 AGENT_LABELS = (
     LABEL_QQAR_2HOP,

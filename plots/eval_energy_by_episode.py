@@ -7,14 +7,16 @@ import random
 
 from algorithms.network import NetworkEnv
 from algorithms.one_hop_qqar import OneHopQQARAgent
+from algorithms.plain_q_learning import PlainQLearningAgent
+from algorithms.two_hop_qqar import QLearningAgent
+
 from algorithms.paper_config import (
     LABEL_BASELINE_Q,
     LABEL_QQAR_1HOP,
     LABEL_QQAR_2HOP,
     MAX_EPISODES,
 )
-from algorithms.plain_q_learning import PlainQLearningAgent
-from algorithms.q_learning import QLearningAgent
+
 
 
 def run_energy_by_episode_benchmark():
@@ -34,7 +36,7 @@ def run_energy_by_episode_benchmark():
     energy_runs = {agent: [] for agent in agent_factories}
 
     print(f"\n{'=' * 55}")
-    print(" QQAR ABLATION: Cumulative Energy Consumption vs Episodes")
+    print(" Routing algorithm comparison: cumulative training energy vs episodes")
     print(f"{'=' * 55}")
 
     for run in range(num_runs):
@@ -91,7 +93,7 @@ def run_energy_by_episode_benchmark():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, 'energy_consumption_vs_episodes.png')
     plt.savefig(save_path, dpi=300)
-    print(f"\n>>> Energy-by-episode plot saved to: {save_path} <<<")
+    print(f"\nSaved results to: {save_path}")
 
 
 if __name__ == "__main__":

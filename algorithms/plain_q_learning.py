@@ -75,7 +75,7 @@ class PlainQLearningAgent:
 
     def train(self, sinks):
         """Standard 1-hop Q-learning ignoring QoS parameters."""
-        print(f"[Train] {LABEL_BASELINE_Q}: sink_count={len(sinks)}, episodes={self.max_episodes}")
+        print(f"Training {LABEL_BASELINE_Q}: sinks={len(sinks)}, episodes={self.max_episodes}")
         self.training_energy_consumed = 0.0
         self.training_energy_history = []
         wban_nodes = [n for n in self.env.nodes.keys() if n not in sinks]
@@ -86,14 +86,14 @@ class PlainQLearningAgent:
             steps = 0
             epsilon = max(0.1, 1.0 - episode / (self.max_episodes * 0.5))
             
-            while current_id != pkt.sink_id and steps < MAX_TRAINING_STEPS:
+            while current_id not in sinks and steps < MAX_TRAINING_STEPS:
                 current_node = self.env.nodes[current_id]
-                current_dist = self.env.get_distance(current_id, pkt.sink_id)
+                
+                current_dist = min([self.env.get_distance(current_id, s) for s in sinks])
                 candidates = [
                     n_id for n_id, data in current_node.neighbor_list.items()
                     if data['hops'] == 1
-                    and (n_id not in sinks or n_id == pkt.sink_id)
-                    and current_dist > self.env.get_distance(n_id, pkt.sink_id)
+                    and current_dist > min([self.env.get_distance(n_id, s) for s in sinks])
                 ]
                 
                 if not candidates: break
@@ -104,20 +104,16 @@ class PlainQLearningAgent:
                     action_id = max(candidates, key=lambda a: self.get_q_value(current_id, a))
                 
                 success = self._transmission_succeeds(current_id, action_id)
-                # Simple reward: 100 for sink, 0 for anything else
-                reward = 100.0 if action_id == pkt.sink_id else 0.0
-                if not success:
-                    reward = -100.0
+                reward = 100.0 if action_id in sinks else 0.0
+                if not success: reward = -100.0
                 
-                # Bellman Equation (Standard)
-                if action_id == pkt.sink_id:
+                if action_id in sinks:
                     max_next_q = 0.0
                 else:
                     next_cands = [
                         n for n, data in self.env.nodes[action_id].neighbor_list.items()
                         if data['hops'] == 1
-                        and (n not in sinks or n == pkt.sink_id)
-                        and self.env.get_distance(action_id, pkt.sink_id) > self.env.get_distance(n, pkt.sink_id)
+                        and min([self.env.get_distance(action_id, s) for s in sinks]) > min([self.env.get_distance(n, s) for s in sinks])
                     ]
                     max_next_q = max([self.get_q_value(action_id, a) for a in next_cands]) if next_cands else 0.0
                     
@@ -134,7 +130,7 @@ class PlainQLearningAgent:
                 current_id = action_id
                 steps += 1
             self.training_energy_history.append(self.training_energy_consumed)
-        print(f"[Train] {LABEL_BASELINE_Q}: complete; Q-tables populated.")
+        print(f"Finished {LABEL_BASELINE_Q}.")
 
     def select_best_route(self, current_id, candidates, sinks):
         """Simply picks the highest Q-value without any fallback congestion logic."""

@@ -59,7 +59,6 @@ class SimulationEngine:
         self.active_packets = {}
 
     def generate_traffic(self):
-        # BOTTLENECK FIXED: Accurately spawn bulk traffic for heavy density
         expected_packets = (self.data_rate * len(self.wban_nodes)) * self.time_step
         num_packets = int(expected_packets)
         
@@ -147,19 +146,20 @@ class SimulationEngine:
                         self._drop_expired_packet(pkt)
                         continue
                     
-                    cur_dist = self.env.get_distance(node_id, pkt.sink_id)
+                    # Calculate distance to the CLOSEST sink
+                    cur_dist = min([self.env.get_distance(node_id, s) for s in self.sinks])
                     candidates = [
                         n for n in node.neighbor_list.keys()
-                        if (n not in self.sinks or n == pkt.sink_id)
-                        and cur_dist > self.env.get_distance(n, pkt.sink_id)
+                        if cur_dist > min([self.env.get_distance(n, s) for s in self.sinks])
                     ]
-                    
                     if not candidates:
                         self.dropped_packets += 1
                         self.active_packets.pop(pkt.packet_id, None)
                         continue
+
+                    # Pass ALL sinks so the agent can use its Anycast Q-Table
+                    nxt = self.agent.select_best_route(node_id, candidates, self.sinks)
                     
-                    nxt = self.agent.select_best_route(node_id, candidates, [pkt.sink_id])
                     if not nxt:
                         self.dropped_packets += 1
                         self.active_packets.pop(pkt.packet_id, None)
@@ -198,7 +198,7 @@ class SimulationEngine:
                             break
 
                         final_node = hop_id
-                        if hop_id == pkt.sink_id:
+                        if hop_id in self.sinks:
                             self.successful_packets += 1
                             self.total_hops += self.active_packets[pkt.packet_id]['hops']
                             queued_delay = self.current_time - pkt.creation_time

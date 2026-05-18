@@ -6,8 +6,8 @@ import numpy as np
 import os
 
 from algorithms.network import NetworkEnv
-from experiments.simulation_engine import SimulationEngine
-from algorithms.q_learning import QLearningAgent 
+from experiment.simulation_engine import SimulationEngine
+from algorithms.two_hop_qqar import QLearningAgent 
 from algorithms.one_hop_qqar import OneHopQQARAgent 
 from algorithms.plain_q_learning import PlainQLearningAgent 
 from algorithms.paper_config import (
@@ -29,7 +29,7 @@ def run_3way_reproducible_benchmark():
     
     for num_nodes in node_counts:
         print(f"\n{'='*50}")
-        print(f" QQAR ABLATION: {num_nodes} WBAN Nodes")
+        print(f" Routing algorithm comparison: {num_nodes} WBAN nodes")
         print(f"{'='*50}")
         
         runs_data = {agent: {'pdr': [], 'delay': [], 'ro': [], 'energy': []} for agent in agents_list}
@@ -85,7 +85,7 @@ def run_3way_reproducible_benchmark():
 
     # --- Plotting the 3-Way Comparison ---
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('QQAR Ablation Performance Comparison', fontsize=16, fontweight='bold')
+    fig.suptitle('Routing Algorithm Performance Comparison', fontsize=16, fontweight='bold')
 
     colors = {LABEL_QQAR_2HOP: 'navy', LABEL_QQAR_1HOP: 'forestgreen', LABEL_BASELINE_Q: 'darkorange'}
     markers = {LABEL_QQAR_2HOP: 'd', LABEL_QQAR_1HOP: '^', LABEL_BASELINE_Q: 's'}
@@ -128,7 +128,7 @@ def run_3way_reproducible_benchmark():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, 'algorithm_3way_comparison.png')
     plt.savefig(save_path)
-    print(f"\n>>> Simulation fully complete! Results saved to: {save_path} <<<")
+    print(f"\nSaved results to: {save_path}")
 
 if __name__ == "__main__":
     run_3way_reproducible_benchmark()

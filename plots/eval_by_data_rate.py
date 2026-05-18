@@ -6,8 +6,8 @@ import numpy as np
 import os
 
 from algorithms.network import NetworkEnv
-from experiments.simulation_engine import SimulationEngine
-from algorithms.q_learning import QLearningAgent
+from experiment.simulation_engine import SimulationEngine
+from algorithms.two_hop_qqar import QLearningAgent
 from algorithms.one_hop_qqar import OneHopQQARAgent
 from algorithms.plain_q_learning import PlainQLearningAgent
 from algorithms.paper_config import (
@@ -28,7 +28,7 @@ def run_3way_data_rate_benchmark():
     final_std = {agent: {metric: [] for metric in ['pdr', 'delay', 'ro', 'hops']} for agent in agents_list}
     
     print(f"\n{'='*50}")
-    print(f" QQAR ABLATION: Data Rates (5-50 pkts/s)")
+    print(f" Routing algorithm comparison: data rates 5-50 packets/s")
     print(f"{'='*50}")
 
     runs_data = {rate: {agent: {'pdr': [], 'delay': [], 'ro': [], 'hops': []} for agent in agents_list} for rate in data_rates}
@@ -103,7 +103,7 @@ def run_3way_data_rate_benchmark():
 
     # --- Plotting ---
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('QQAR Ablation Performance vs. Data Rate', fontsize=16, fontweight='bold')
+    fig.suptitle('Routing Algorithm Performance vs. Data Rate', fontsize=16, fontweight='bold')
 
     colors = {LABEL_QQAR_2HOP: 'navy', LABEL_QQAR_1HOP: 'forestgreen', LABEL_BASELINE_Q: 'darkorange'}
     markers = {LABEL_QQAR_2HOP: 'd', LABEL_QQAR_1HOP: '^', LABEL_BASELINE_Q: 's'}
@@ -140,7 +140,7 @@ def run_3way_data_rate_benchmark():
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, 'data_rate_3way_comparison.png')
     plt.savefig(save_path)
-    print(f"\n>>> Simulation complete! Results saved to: {save_path} <<<")
+    print(f"\nSaved results to: {save_path}")
 
 if __name__ == "__main__":
     run_3way_data_rate_benchmark()

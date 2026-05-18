@@ -93,7 +93,9 @@ class Node:
         """Eq. 15 & 16: Dynamic delay based on queue size."""
         pkt_b = self.scheduler.size()
         t_nd = 0.5 * ((pkt_b / QUEUE_CAPACITY) + 1) + 0.5 * 0.01
-        return max(0.01, 1 - (1 / (t_nd + 1)))
+        delay_seconds = 1 - (1 / (t_nd + 1))
+        # Scale down to a realistic ~10-20ms base delay
+        return max(0.005, delay_seconds * 0.05)
 
     def get_link_reliability(self, neighbor_id):
         stats = self.link_stats.get(neighbor_id)

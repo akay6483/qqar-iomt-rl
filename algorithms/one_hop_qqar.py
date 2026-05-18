@@ -37,12 +37,15 @@ class OneHopQQARAgent:
     def get_distance_to_closest_sink(self, node_id, sinks):
         return min([self.env.get_distance(node_id, s) for s in sinks])
 
-    def calculate_reward(self, current_id, next_hop_id, sink_id, candidates, packet):
-        if next_hop_id == sink_id: return 100.0  
+    def calculate_reward(self, current_id, next_hop_id, sinks, candidates, packet):
+        if next_hop_id in sinks: return 100.0  
             
         next_node = self.env.nodes[next_hop_id]
-        dist_current = self.env.get_distance(current_id, sink_id)
-        dist_next = self.env.get_distance(next_hop_id, sink_id)
+        
+        # Calculate distance to closest sink
+        dist_current = min([self.env.get_distance(current_id, s) for s in sinks])
+        dist_next = min([self.env.get_distance(next_hop_id, s) for s in sinks])
+        
         deadline_remaining = max(0.01, packet.absolute_deadline - packet.creation_time)
         z_raw = max(0.01, (dist_current - dist_next) / deadline_remaining) 
         
@@ -55,7 +58,11 @@ class OneHopQQARAgent:
         for c_id in candidates:
             c_node = self.env.nodes[c_id]
             sum_lr += self.env.nodes[current_id].get_link_reliability(c_id)
-            sum_z += max(0.01, (dist_current - self.env.get_distance(c_id, sink_id)) / deadline_remaining)
+            
+            # Use closest sink in sum_z normalization
+            c_dist = min([self.env.get_distance(c_id, s) for s in sinks])
+            sum_z += max(0.01, (dist_current - c_dist) / deadline_remaining)
+            
             sum_e += max(0.01, c_node.energy)
             c_delay = c_node.get_dynamic_delay() + getattr(c_node, 'avg_traffic_load', 0.0) * 0.05
             sum_d += 1.0 / max(0.01, c_delay)
@@ -109,7 +116,7 @@ class OneHopQQARAgent:
         next_node.e2e_delay = next_node.get_dynamic_delay() + next_node.avg_traffic_load * 0.05
 
     def train(self, sinks):
-        print(f"[Train] {LABEL_QQAR_1HOP}: sink_count={len(sinks)}, episodes={self.max_episodes}")
+        print(f"Training {LABEL_QQAR_1HOP}: sinks={len(sinks)}, episodes={self.max_episodes}")
         self.training_energy_consumed = 0.0
         self.training_energy_history = []
         wban_nodes = [n for n in self.env.nodes.keys() if n not in sinks]
@@ -120,15 +127,13 @@ class OneHopQQARAgent:
             steps = 0
             epsilon = max(0.1, 1.0 - episode / (self.max_episodes * 0.5))
             
-            while current_id != pkt.sink_id and steps < MAX_TRAINING_STEPS:
+            while current_id not in sinks and steps < MAX_TRAINING_STEPS:
                 current_node = self.env.nodes[current_id]
-                current_dist = self.env.get_distance(current_id, pkt.sink_id)
+                current_dist = min([self.env.get_distance(current_id, s) for s in sinks])
                 
-                # STRICT FILTER: Only 1-hop neighbors allowed
                 candidates = [n_id for n_id, data in current_node.neighbor_list.items() 
                               if data['hops'] == 1
-                              and (n_id not in sinks or n_id == pkt.sink_id)
-                              and current_dist > self.env.get_distance(n_id, pkt.sink_id)]
+                              and current_dist > min([self.env.get_distance(n_id, s) for s in sinks])]
                               
                 if not candidates: break
                     
@@ -136,19 +141,17 @@ class OneHopQQARAgent:
                 else: action_id = max(candidates, key=lambda a: self.get_q_value(current_id, a))
                     
                 success = self._transmission_succeeds(current_id, action_id)
-                reward = self.calculate_reward(current_id, action_id, pkt.sink_id, candidates, pkt)
-                if not success:
-                    reward = -100.0
                 
-                if action_id == pkt.sink_id: max_next_q = 0.0
+                reward = self.calculate_reward(current_id, action_id, sinks, candidates, pkt)
+                if not success: reward = -100.0
+                
+                if action_id in sinks: max_next_q = 0.0
                 else:
                     next_node = self.env.nodes[action_id]
-                    next_dist = self.env.get_distance(action_id, pkt.sink_id)
-                    # STRICT FILTER for max_next_q: Only 1-hop neighbors of the next node
+                    next_dist = min([self.env.get_distance(action_id, s) for s in sinks])
                     next_candidates = [n for n, data in next_node.neighbor_list.items() 
                                        if data['hops'] == 1
-                                       and (n not in sinks or n == pkt.sink_id)
-                                       and next_dist > self.env.get_distance(n, pkt.sink_id)]
+                                       and next_dist > min([self.env.get_distance(n, s) for s in sinks])]
                     max_next_q = max([self.get_q_value(action_id, a) for a in next_candidates]) if next_candidates else 0.0
                     
                 old_q = self.get_q_value(current_id, action_id)
@@ -162,7 +165,7 @@ class OneHopQQARAgent:
                 current_id = action_id
                 steps += 1
             self.training_energy_history.append(self.training_energy_consumed)
-        print(f"[Train] {LABEL_QQAR_1HOP}: complete; Q-tables populated.")
+        print(f"Finished {LABEL_QQAR_1HOP}.")
 
     def select_best_route(self, current_id, candidates, sinks):
         # Filter physical candidates to 1-hop only
