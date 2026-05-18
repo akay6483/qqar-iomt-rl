@@ -45,30 +45,46 @@ class QLearningAgent:
         if next_hop_id in sinks: return 100.0  
             
         next_node = self.env.nodes[next_hop_id]
+        neighbor_info = self.env.nodes[current_id].neighbor_list.get(next_hop_id, {})
         
         # Calculate distance to closest sink
         dist_current = min([self.env.get_distance(current_id, s) for s in sinks])
         dist_next = min([self.env.get_distance(next_hop_id, s) for s in sinks])
-        
         deadline_remaining = max(0.01, packet.absolute_deadline - packet.creation_time)
         z_raw = max(0.01, (dist_current - dist_next) / deadline_remaining) 
         
-        lr_raw = self.env.nodes[current_id].get_link_reliability(next_hop_id)
-        e_raw = max(0.01, next_node.energy)
-        observed_delay = next_node.get_dynamic_delay() + getattr(next_node, 'avg_traffic_load', 0.0) * 0.05
+        # BUG FIX: If it's a 2-hop route, evaluate the RELAY node's reliability and energy
+        if neighbor_info.get('hops') == 2:
+            relay_id = neighbor_info['relay']
+            relay_node = self.env.nodes[relay_id]
+            lr_raw = self.env.nodes[current_id].get_link_reliability(relay_id) * relay_node.get_link_reliability(next_hop_id)
+            e_raw = min(max(0.01, next_node.energy), max(0.01, relay_node.energy)) # Bottleneck energy
+            observed_delay = relay_node.get_dynamic_delay() + getattr(relay_node, 'avg_traffic_load', 0.0) * 0.05
+        else:
+            lr_raw = self.env.nodes[current_id].get_link_reliability(next_hop_id)
+            e_raw = max(0.01, next_node.energy)
+            observed_delay = next_node.get_dynamic_delay() + getattr(next_node, 'avg_traffic_load', 0.0) * 0.05
+            
         d_raw = 1.0 / max(0.01, observed_delay)
         
+        # Normalization sums
         sum_lr, sum_z, sum_e, sum_d = 0.01, 0.01, 0.01, 0.01 
         for c_id in candidates:
+            c_info = self.env.nodes[current_id].neighbor_list.get(c_id, {})
             c_node = self.env.nodes[c_id]
-            sum_lr += self.env.nodes[current_id].get_link_reliability(c_id)
             
-            # Use closest sink in sum_z normalization
+            if c_info.get('hops') == 2:
+                c_relay = self.env.nodes[c_info['relay']]
+                sum_lr += self.env.nodes[current_id].get_link_reliability(c_relay.node_id) * c_relay.get_link_reliability(c_id)
+                sum_e += min(max(0.01, c_node.energy), max(0.01, c_relay.energy))
+                c_delay = c_relay.get_dynamic_delay() + getattr(c_relay, 'avg_traffic_load', 0.0) * 0.05
+            else:
+                sum_lr += self.env.nodes[current_id].get_link_reliability(c_id)
+                sum_e += max(0.01, c_node.energy)
+                c_delay = c_node.get_dynamic_delay() + getattr(c_node, 'avg_traffic_load', 0.0) * 0.05
+                
             c_dist = min([self.env.get_distance(c_id, s) for s in sinks])
             sum_z += max(0.01, (dist_current - c_dist) / deadline_remaining)
-            
-            sum_e += max(0.01, c_node.energy)
-            c_delay = c_node.get_dynamic_delay() + getattr(c_node, 'avg_traffic_load', 0.0) * 0.05
             sum_d += 1.0 / max(0.01, c_delay)
             
         r_val = (self.weights['A']*(lr_raw/sum_lr) + self.weights['B']*(z_raw/sum_z) + 
@@ -214,14 +230,22 @@ class QLearningAgent:
         Algorithm 4 (Lines 26-28): Fallback congestion control.
         """
         sorted_candidates = sorted(candidates, key=lambda c: self.get_q_value(current_id, c), reverse=True)
-        best_candidate = sorted_candidates[0]
-        best_node = self.env.nodes[best_candidate]
         
-        # Assume nodes have a traffic load tracker. Fallback if overloaded or dying.
-        # L_th is 0.5 as defined in the paper.
-        traffic_load = getattr(best_node, 'avg_traffic_load', 0.0)
-        
-        if (traffic_load > TRAFFIC_LOAD_THRESHOLD or best_node.energy < LOW_ENERGY_THRESHOLD_J) and len(sorted_candidates) > 1:
-            return sorted_candidates[1] # Use the alternative path
+        # BUG FIX: Loop through best candidates and check the RELAY node if it's a 2-hop route
+        for best_candidate in sorted_candidates:
+            best_node = self.env.nodes[best_candidate]
+            neighbor_info = self.env.nodes[current_id].neighbor_list.get(best_candidate, {})
             
-        return best_candidate
+            if neighbor_info.get('hops') == 2:
+                check_node = self.env.nodes[neighbor_info['relay']] # Check the middle-man
+            else:
+                check_node = best_node # Check the direct receiver
+                
+            traffic_load = getattr(check_node, 'avg_traffic_load', 0.0)
+            
+            # If the node we are handing the packet to is healthy, take this route
+            if traffic_load <= TRAFFIC_LOAD_THRESHOLD and check_node.energy >= LOW_ENERGY_THRESHOLD_J:
+                return best_candidate
+                
+        # If all preferred routes are congested, default to the highest Q-value
+        return sorted_candidates[0] if sorted_candidates else None
