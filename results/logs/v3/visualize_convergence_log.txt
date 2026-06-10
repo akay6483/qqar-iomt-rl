@@ -1,0 +1,131 @@
+(venv) akay@akay-Inspiron-15-5501:~/Documents/1_Projects/capstone/qqar-iomt-paper$ python3 -m plots.visualize_convergence
+
+=======================================================
+ Routing algorithm comparison: True RL Convergence
+=======================================================
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 568
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 603
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 557
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 565
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 552
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+findfont: Generic family 'serif' not found because none of the following families were found: Times New Roman
+
+Saved results to: results/figures/q_learning_convergence.png

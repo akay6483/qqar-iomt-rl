@@ -1,6 +1,23 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.serif': ['Liberation Serif', 'DejaVu Serif', 'serif'],
+    'axes.grid': True,
+    'grid.linestyle': '--',
+    'grid.alpha': 0.7,
+    'lines.linewidth': 2.5,
+    'lines.markersize': 8,
+    'axes.labelsize': 12,
+    'axes.titlesize': 14,
+    'xtick.labelsize': 11,
+    'ytick.labelsize': 11,
+    'figure.autolayout': True,
+    'legend.framealpha': 1.0,
+    'legend.edgecolor': 'black'
+})
 import numpy as np
 import os
 import random
