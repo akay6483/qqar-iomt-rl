@@ -1,0 +1,87 @@
+(venv) akay@akay-Inspiron-15-5501:~/Documents/1_Projects/capstone/qqar-iomt-paper$ python3 -m plots.eval_energy_by_episode
+
+=======================================================
+ Routing algorithm comparison: cumulative training energy vs episodes
+=======================================================
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 568
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 603
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 557
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 565
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 552
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 581
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 556
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 605
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 559
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+Deploying 200 nodes in a 500x500m area...
+Network built. Total physical links established: 560
+Training QQAR paper algorithm (2-hop discovery): sinks=10, episodes=2000
+Finished QQAR paper algorithm (2-hop discovery).
+Training QQAR with 1-hop discovery: sinks=10, episodes=2000
+Finished QQAR with 1-hop discovery.
+Training Plain Q-learning baseline (1-hop): sinks=10, episodes=2000
+Finished Plain Q-learning baseline (1-hop).
+
+Saved results to: results/figures/energy_consumption_vs_episodes.png

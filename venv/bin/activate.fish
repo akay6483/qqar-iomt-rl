@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/akay/Documents/1_Projects/Reinforcement-IoT/qqar-iomt-paper/venv
+set -gx VIRTUAL_ENV /home/akay/Documents/1_Projects/capstone/qqar-iomt-paper/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

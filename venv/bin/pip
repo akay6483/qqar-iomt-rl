@@ -1,4 +1,4 @@
-#!/home/akay/Documents/1_Projects/Reinforcement-IoT/qqar-iomt-paper/venv/bin/python3
+#!/home/akay/Documents/1_Projects/capstone/qqar-iomt-paper/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

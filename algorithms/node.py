@@ -31,7 +31,8 @@ class PriorityScheduler:
 
     def enqueue_packet(self, packet):
         if self.size() >= QUEUE_CAPACITY:
-            return False
+            return False # Buffer overflow, drop packet
+            
         if packet.priority_tag == 'High+': self.critical_queue.append(packet)
         elif packet.priority_tag == 'High': self.delay_sensitive_queue.append(packet)
         elif packet.priority_tag == 'Med': self.reliability_sensitive_queue.append(packet)
@@ -43,18 +44,27 @@ class PriorityScheduler:
                                     self.reliability_sensitive_queue, self.ordinary_queue])
 
     def manage_timeouts(self, current_time, estimated_tx_time):
+        """Monitors queues and promotes expiring packets to critical status."""
         lower_queues = [self.delay_sensitive_queue, self.reliability_sensitive_queue, self.ordinary_queue]
         for q in lower_queues:
             for i in range(len(q) - 1, -1, -1):
+                # If packet will expire before or during transmission
                 if (q[i].absolute_deadline - current_time) <= estimated_tx_time:
                     p = q.pop(i)
                     p.priority_tag = 'High+'
+                    
+                    # BUG FIX: Extend the absolute deadline by 1.0s (Critical Packet allowance)
+                    # so the simulation engine doesn't instantly delete it on the next tick
+                    p.absolute_deadline = current_time + 1.0 
+                    
                     self.critical_queue.append(p)
 
     def get_next_packet_for_transmission(self):
+        """Always yields the highest priority available packet."""
         for q in [self.critical_queue, self.delay_sensitive_queue, self.reliability_sensitive_queue, self.ordinary_queue]:
             if q: return q.pop(0)
         return None
+
 
 class Node:
     def __init__(self, node_id, initial_energy=100.0):
@@ -64,11 +74,10 @@ class Node:
         self.network_env = None
         self.scheduler = PriorityScheduler()
         
-        # Dynamic Trackers (Eq. 20, 23)
+        # Dynamic Trackers
         self.total_tx = 0
         self.success_tx = 0
-        self.link_reliability = 1.0 
-        self.link_stats = {}
+        self.link_stats = {} # Dictionary mapping neighbor_id -> stats
         self.pkt_in = 0
         self.pkt_out = 0
         self.avg_traffic_load = 0.0
@@ -81,9 +90,10 @@ class Node:
         # 1-hop Discovery
         if packet.sn == packet.rn:
             self.neighbor_list[packet.sn] = {'hops': 1, 'energy': packet.energy, 'relay': packet.sn}
-            # Rebroadcast for 2-hop discovery (Algorithm 1, line 7)
+            # Rebroadcast for 2-hop discovery (Algorithm 1)
             relay_packet = HelloPacket(packet.sn, self.node_id, packet.t_a, self.energy)
             self.network_env.broadcast(self, relay_packet)
+            
         # 2-hop Discovery
         elif packet.sn != self.node_id:
             if packet.sn not in self.neighbor_list:
@@ -94,14 +104,15 @@ class Node:
         pkt_b = self.scheduler.size()
         t_nd = 0.5 * ((pkt_b / QUEUE_CAPACITY) + 1) + 0.5 * 0.01
         delay_seconds = 1 - (1 / (t_nd + 1))
-        # Scale down to a realistic ~10-20ms base delay
+        # Scaled down to a realistic ~10-20ms base delay
         return max(0.005, delay_seconds * 0.05)
 
     def get_link_reliability(self, neighbor_id):
+        """Fetch the EWMA link reliability for a specific neighbor."""
         stats = self.link_stats.get(neighbor_id)
-        if not stats or stats['total'] == 0:
-            return 1.0
-        return stats['success'] / stats['total']
+        if not stats:
+            return 1.0 # Perfect assumption until proven otherwise
+        return stats['ewma']
 
     def consume_tx_energy(self, size_bytes=PACKET_SIZE_BYTES):
         before_energy = self.energy
@@ -114,16 +125,23 @@ class Node:
         return before_energy - self.energy
 
     def record_transmission(self, success=True, neighbor_id=None):
-        """Eq. 20 & 23: Update metrics after every hop."""
+        """Eq. 20 & 23: Update EWMA and Congestion metrics after every hop."""
         self.total_tx += 1
         self.pkt_out += 1
         if success: self.success_tx += 1
+        
+        # BUG FIX 1: Calculate Link Reliability per neighbor using EWMA (Eq. 20)
         if neighbor_id is not None:
-            stats = self.link_stats.setdefault(neighbor_id, {'total': 0, 'success': 0})
+            stats = self.link_stats.setdefault(neighbor_id, {'total': 0, 'success': 0, 'ewma': 1.0})
             stats['total'] += 1
             if success:
                 stats['success'] += 1
-        delta = 0.4 # Paper weighting factor
-        self.link_reliability = (1 - delta) * self.link_reliability + delta * (self.success_tx / self.total_tx)
-        if self.pkt_out > 0:
-            self.avg_traffic_load = self.pkt_in / self.pkt_out
+                
+            delta = 0.4 # Paper weighting factor
+            raw_success = stats['success'] / stats['total']
+            stats['ewma'] = (1 - delta) * stats['ewma'] + delta * raw_success
+
+        # BUG FIX 2: Stable, bounded Traffic Load approximation (Eq. 23)
+        buffer_load = self.scheduler.size() / QUEUE_CAPACITY
+        throughput_ratio = self.pkt_in / max(1, self.pkt_in + self.pkt_out)
+        self.avg_traffic_load = (buffer_load * 0.6) + (throughput_ratio * 0.4)
